@@ -69,19 +69,30 @@ export function SettingsPage() {
   ]
 
   const handleSave = async () => {
-    setApiKey(localKey)
     const budget = parseInt(localBudget) || 200000
+    let newRate = parseFloat(localUsdRate) || 1350
+
+    if (localExMode === "api") {
+      const active = rates[selectedApiKey]
+      if (active?.venta) newRate = active.venta
+    }
+
+    // Update context state
+    setApiKey(localKey)
     setMonthlyBudget(budget)
     setProfileMode(localMode)
     setExchangeRateMode(localExMode)
-    if (localExMode === "api") {
-      const active = rates[selectedApiKey]
-      if (active?.venta) setUsdRate(active.venta)
-    } else {
-      const rate = parseFloat(localUsdRate) || 1350
-      setUsdRate(rate)
-    }
-    await saveProfile()
+    setUsdRate(newRate)
+
+    // Pass fresh values to avoid stale-closure bug
+    await saveProfile({
+      apiKey: localKey,
+      monthlyBudget: budget,
+      profileMode: localMode,
+      exchangeRateMode: localExMode,
+      usdRate: newRate,
+    })
+
     setSaved(true)
     setTimeout(() => {
       setSaved(false)

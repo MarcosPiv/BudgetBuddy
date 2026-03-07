@@ -73,7 +73,14 @@ interface AppState {
   setUsdRate: (n: number) => void
   exchangeRateMode: ExchangeRateMode
   setExchangeRateMode: (mode: ExchangeRateMode) => void
-  saveProfile: () => Promise<void>
+  saveProfile: (overrides?: {
+    userName?: string
+    monthlyBudget?: number
+    profileMode?: ProfileMode
+    usdRate?: number
+    exchangeRateMode?: ExchangeRateMode
+    apiKey?: string
+  }) => Promise<void>
   // Filters
   timeFilter: TimeFilter
   setTimeFilter: (f: TimeFilter) => void
@@ -223,16 +230,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Profile sync ─────────────────────────────────────────────────────────────
-  const saveProfile = async () => {
+  // Accepts optional overrides to avoid stale-closure issues when callers
+  // call React setters and saveProfile in the same synchronous block.
+  const saveProfile = async (overrides?: {
+    userName?: string
+    monthlyBudget?: number
+    profileMode?: ProfileMode
+    usdRate?: number
+    exchangeRateMode?: ExchangeRateMode
+    apiKey?: string
+  }) => {
     if (!user) return
     await supabase.from("profiles").upsert({
       id: user.id,
-      user_name: userName,
-      monthly_budget: monthlyBudget,
-      profile_mode: profileMode,
-      exchange_rate_mode: exchangeRateMode,
-      usd_rate: usdRate,
-      api_key: apiKey,
+      user_name: overrides?.userName ?? userName,
+      monthly_budget: overrides?.monthlyBudget ?? monthlyBudget,
+      profile_mode: overrides?.profileMode ?? profileMode,
+      exchange_rate_mode: overrides?.exchangeRateMode ?? exchangeRateMode,
+      usd_rate: overrides?.usdRate ?? usdRate,
+      api_key: overrides?.apiKey ?? apiKey,
       updated_at: new Date().toISOString(),
     })
   }

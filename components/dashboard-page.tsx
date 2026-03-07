@@ -104,6 +104,7 @@ export function DashboardPage() {
     profileMode,
     userName,
     usdRate,
+    apiKey,
     timeFilter,
     setTimeFilter,
     customRange,
@@ -142,6 +143,7 @@ export function DashboardPage() {
   const [newExRateType, setNewExRateType] = useState<ExchangeRateType>("BLUE")
   const [newManualRate, setNewManualRate] = useState("")
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   // Cotizaciones en vivo para el selector de tipo de cambio en el formulario
   const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
@@ -346,6 +348,12 @@ export function DashboardPage() {
   const handleMagicSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
+
+    if (!apiKey.trim()) {
+      setAiError("Configurá tu API key en Ajustes para usar el asistente de IA.")
+      setTimeout(() => setAiError(null), 4000)
+      return
+    }
     setIsProcessing(true)
     const input =
       magicInput ||
@@ -1133,6 +1141,21 @@ export function DashboardPage() {
               </form>
             </div>
           </div>
+
+          {/* AI error — no API key */}
+          <AnimatePresence>
+            {aiError && (
+              <motion.div
+                className="flex items-center gap-2 mt-2 text-xs text-destructive"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <Settings className="w-3 h-3 shrink-0" />
+                <span>{aiError}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Processing indicator */}
           <AnimatePresence>

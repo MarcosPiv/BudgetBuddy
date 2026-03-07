@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Wallet, Mail, Lock, ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Wallet, Mail, Lock, ArrowLeft, Loader2, AlertCircle, CheckCircle2, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase"
 export function AuthPage() {
   const { setView } = useApp()
   const [isLogin, setIsLogin] = useState(true)
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -39,13 +40,24 @@ export function AuthPage() {
         if (err) throw err
         // Navigation handled by onAuthStateChange in AppProvider
       } else {
-        const { error: err } = await supabase.auth.signUp({ email, password })
+        const { data, error: err } = await supabase.auth.signUp({ email, password })
         if (err) throw err
-        setSuccessMsg("¡Cuenta creada! Revisá tu email para confirmar y luego iniciá sesión.")
+
+        // Save name to profile immediately after signup
+        if (data.user && name.trim()) {
+          await supabase
+            .from("profiles")
+            .upsert({ id: data.user.id, user_name: name.trim() }, { onConflict: "id" })
+        }
+
+        if (!data.session) {
+          // Email confirmation required
+          setSuccessMsg("¡Cuenta creada! Revisá tu email para confirmar y luego iniciá sesión.")
+        }
+        // If session exists, onAuthStateChange fires → loads profile with real name → dashboard
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Ocurrió un error."
-      // Translate common Supabase error messages to Spanish
       if (msg.includes("Invalid login credentials")) {
         setError("Email o contraseña incorrectos.")
       } else if (msg.includes("User already registered")) {
@@ -60,13 +72,18 @@ export function AuthPage() {
     }
   }
 
+  const switchMode = () => {
+    setIsLogin(!isLogin)
+    setError(null)
+    setSuccessMsg(null)
+    setName("")
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
-      {/* Ambient glow */}
       <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full bg-primary/5 blur-[120px]" />
       <div className="pointer-events-none absolute bottom-1/4 left-1/3 w-[400px] h-[300px] rounded-full bg-accent/5 blur-[100px]" />
 
-      {/* Back button */}
       <motion.button
         className="absolute top-6 left-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         onClick={() => setView("landing")}
@@ -94,14 +111,43 @@ export function AuthPage() {
               {isLogin ? "Bienvenido de vuelta" : "Crea tu cuenta"}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {isLogin
-                ? "Inicia sesion para continuar"
-                : "Registrate para empezar a trackear"}
+              {isLogin ? "Inicia sesion para continuar" : "Registrate para empezar a trackear"}
             </p>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+            {/* Name field — only on signup */}
+            <AnimatePresence initial={false}>
+              {!isLogin && (
+                <motion.div
+                  className="flex flex-col gap-2"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Label htmlFor="name" className="text-sm text-muted-foreground">
+                    Tu nombre
+                  </Label>
+                  <div className="relative">
+                    <UserRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="Juan García"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="pl-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11"
+                      disabled={loading}
+                      autoComplete="name"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Email */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="email" className="text-sm text-muted-foreground">
                 Email
@@ -121,6 +167,7 @@ export function AuthPage() {
               </div>
             </div>
 
+            {/* Password */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="text-sm text-muted-foreground">
                 Contraseña
@@ -140,7 +187,7 @@ export function AuthPage() {
               </div>
             </div>
 
-            {/* Error / success feedback */}
+            {/* Error / success */}
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
@@ -170,7 +217,7 @@ export function AuthPage() {
 
             <Button
               type="submit"
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-11 font-semibold rounded-xl cursor-pointer"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-11 font-semibold rounded-xl cursor-pointer mt-1"
               disabled={loading}
             >
               {loading ? (
@@ -183,17 +230,12 @@ export function AuthPage() {
             </Button>
           </form>
 
-          {/* Toggle login / register */}
           <p className="text-center text-sm text-muted-foreground mt-6">
             {isLogin ? "No tienes cuenta? " : "Ya tienes cuenta? "}
             <button
               type="button"
               className="text-primary hover:underline font-medium cursor-pointer"
-              onClick={() => {
-                setIsLogin(!isLogin)
-                setError(null)
-                setSuccessMsg(null)
-              }}
+              onClick={switchMode}
             >
               {isLogin ? "Registrate" : "Inicia sesion"}
             </button>

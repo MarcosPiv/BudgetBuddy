@@ -33,8 +33,9 @@ export function ProfilePage() {
 
   const handleSaveName = async () => {
     if (!localName.trim()) return
-    setUserName(localName.trim())
-    await saveProfile()
+    const newName = localName.trim()
+    setUserName(newName)
+    await saveProfile({ userName: newName })
     setSavedName(true)
     setTimeout(() => setSavedName(false), 2000)
   }
