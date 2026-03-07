@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Brain,
+  Bot,
+  Sparkles,
   Eye,
   EyeOff,
   ShieldCheck,
@@ -20,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useApp, type ProfileMode, type ExchangeRateMode } from "@/lib/app-context"
+import { useApp, type ProfileMode, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 
 function fmt(n: number | null | undefined) {
@@ -28,11 +30,51 @@ function fmt(n: number | null | undefined) {
   return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
 }
 
+const AI_PROVIDERS: Array<{
+  id: AIProvider
+  label: string
+  model: string
+  Icon: React.ElementType
+  placeholder: string
+  hint: string
+}> = [
+  {
+    id: "claude",
+    label: "Claude",
+    model: "Anthropic",
+    Icon: Brain,
+    placeholder: "sk-ant-api03-...",
+    hint: "Conseguí tu clave en console.anthropic.com",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    model: "GPT-4o",
+    Icon: Bot,
+    placeholder: "sk-proj-...",
+    hint: "Conseguí tu clave en platform.openai.com",
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    model: "Google",
+    Icon: Sparkles,
+    placeholder: "AIzaSy...",
+    hint: "Conseguí tu clave en aistudio.google.com",
+  },
+]
+
 export function SettingsPage() {
   const {
     setView,
-    apiKey,
-    setApiKey,
+    aiProvider,
+    setAiProvider,
+    apiKeyClaude,
+    setApiKeyClaude,
+    apiKeyOpenAI,
+    setApiKeyOpenAI,
+    apiKeyGemini,
+    setApiKeyGemini,
     monthlyBudget,
     setMonthlyBudget,
     profileMode,
@@ -45,13 +87,30 @@ export function SettingsPage() {
   } = useApp()
 
   const [showKey, setShowKey] = useState(false)
-  const [localKey, setLocalKey] = useState(apiKey)
+  const [localProvider, setLocalProvider] = useState<AIProvider>(aiProvider)
+  const [localKeysClaude, setLocalKeysClaude] = useState(apiKeyClaude)
+  const [localKeysOpenAI, setLocalKeysOpenAI] = useState(apiKeyOpenAI)
+  const [localKeysGemini, setLocalKeysGemini] = useState(apiKeyGemini)
   const [localBudget, setLocalBudget] = useState(monthlyBudget.toString())
   const [localMode, setLocalMode] = useState<ProfileMode>(profileMode)
   const [localUsdRate, setLocalUsdRate] = useState(usdRate.toString())
   const [localExMode, setLocalExMode] = useState<ExchangeRateMode>(exchangeRateMode)
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
+
+  // Derived: key value and setter for the currently selected provider
+  const displayedKey =
+    localProvider === "claude" ? localKeysClaude :
+    localProvider === "openai" ? localKeysOpenAI :
+    localKeysGemini
+
+  const handleKeyChange = (value: string) => {
+    if (localProvider === "claude") setLocalKeysClaude(value)
+    else if (localProvider === "openai") setLocalKeysOpenAI(value)
+    else setLocalKeysGemini(value)
+  }
+
+  const activeProviderMeta = AI_PROVIDERS.find((p) => p.id === localProvider)!
 
   const isApiMode = localExMode === "api"
 
@@ -78,7 +137,10 @@ export function SettingsPage() {
     }
 
     // Update context state
-    setApiKey(localKey)
+    setAiProvider(localProvider)
+    setApiKeyClaude(localKeysClaude)
+    setApiKeyOpenAI(localKeysOpenAI)
+    setApiKeyGemini(localKeysGemini)
     setMonthlyBudget(budget)
     setProfileMode(localMode)
     setExchangeRateMode(localExMode)
@@ -86,7 +148,10 @@ export function SettingsPage() {
 
     // Pass fresh values to avoid stale-closure bug
     await saveProfile({
-      apiKey: localKey,
+      aiProvider: localProvider,
+      apiKeyClaude: localKeysClaude,
+      apiKeyOpenAI: localKeysOpenAI,
+      apiKeyGemini: localKeysGemini,
       monthlyBudget: budget,
       profileMode: localMode,
       exchangeRateMode: localExMode,
@@ -399,32 +464,76 @@ export function SettingsPage() {
               </AnimatePresence>
             </div>
 
-            {/* API Key Input */}
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="apiKey" className="text-sm text-muted-foreground">
-                API Key (Claude / OpenAI)
+            {/* AI Provider + API Key */}
+            <div className="flex flex-col gap-3">
+              <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                <Brain className="w-3.5 h-3.5" />
+                Proveedor de IA
               </Label>
-              <div className="relative">
-                <Input
-                  id="apiKey"
-                  type={showKey ? "text" : "password"}
-                  placeholder="sk-..."
-                  value={localKey}
-                  onChange={(e) => setLocalKey(e.target.value)}
-                  className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  aria-label={showKey ? "Ocultar clave" : "Mostrar clave"}
+
+              {/* Provider selector */}
+              <div className="grid grid-cols-3 gap-2">
+                {AI_PROVIDERS.map((p) => {
+                  const isSelected = localProvider === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setLocalProvider(p.id)
+                        setShowKey(false)
+                      }}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all cursor-pointer ${
+                        isSelected
+                          ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                          : "border-border bg-secondary/30 hover:bg-secondary/50"
+                      }`}
+                    >
+                      <p.Icon
+                        className={`w-5 h-5 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                      />
+                      <div className="text-center">
+                        <p
+                          className={`text-xs font-semibold leading-none ${
+                            isSelected ? "text-foreground" : "text-muted-foreground"
+                          }`}
+                        >
+                          {p.label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{p.model}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* API Key input for selected provider */}
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="providerKey"
+                  className="text-xs text-muted-foreground"
                 >
-                  {showKey ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
+                  API Key · {activeProviderMeta.label}
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="providerKey"
+                    type={showKey ? "text" : "password"}
+                    placeholder={activeProviderMeta.placeholder}
+                    value={displayedKey}
+                    onChange={(e) => handleKeyChange(e.target.value)}
+                    className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    aria-label={showKey ? "Ocultar clave" : "Mostrar clave"}
+                  >
+                    {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{activeProviderMeta.hint}</p>
               </div>
             </div>
 

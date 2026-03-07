@@ -9,6 +9,7 @@ export type ProfileMode = "standard" | "expenses_only"
 export type TimeFilter = "week" | "month" | "year" | "custom"
 export type ExchangeRateMode = "api" | "manual"
 export type ExchangeRateType = "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL"
+export type AIProvider = "claude" | "openai" | "gemini"
 
 export interface Transaction {
   id: string
@@ -50,6 +51,8 @@ interface AppState {
   user: User | null
   loadingAuth: boolean
   signOut: () => Promise<void>
+  isPasswordRecovery: boolean
+  setIsPasswordRecovery: (v: boolean) => void
   // Navigation
   currentView: View
   setView: (view: View) => void
@@ -60,9 +63,18 @@ interface AppState {
   // UI
   isProcessing: boolean
   setIsProcessing: (v: boolean) => void
-  // Profile
+  // AI Provider
+  aiProvider: AIProvider
+  setAiProvider: (p: AIProvider) => void
+  apiKeyClaude: string
+  setApiKeyClaude: (k: string) => void
+  apiKeyOpenAI: string
+  setApiKeyOpenAI: (k: string) => void
+  apiKeyGemini: string
+  setApiKeyGemini: (k: string) => void
+  /** Computed: the active provider's key (used by dashboard for the AI check) */
   apiKey: string
-  setApiKey: (key: string) => void
+  // Profile
   userName: string
   setUserName: (name: string) => void
   monthlyBudget: number
@@ -79,7 +91,10 @@ interface AppState {
     profileMode?: ProfileMode
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
-    apiKey?: string
+    aiProvider?: AIProvider
+    apiKeyClaude?: string
+    apiKeyOpenAI?: string
+    apiKeyGemini?: string
   }) => Promise<void>
   // Filters
   timeFilter: TimeFilter
@@ -94,11 +109,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loadingAuth, setLoadingAuth] = useState(true)
   const [currentView, setView] = useState<View>("landing")
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const [apiKey, setApiKey] = useState("")
+  // AI provider state
+  const [aiProvider, setAiProvider] = useState<AIProvider>("claude")
+  const [apiKeyClaude, setApiKeyClaude] = useState("")
+  const [apiKeyOpenAI, setApiKeyOpenAI] = useState("")
+  const [apiKeyGemini, setApiKeyGemini] = useState("")
+
+  // Computed: the key for the active provider
+  const apiKey =
+    aiProvider === "claude" ? apiKeyClaude :
+    aiProvider === "openai" ? apiKeyOpenAI :
+    apiKeyGemini
+
   const [userName, setUserName] = useState("Usuario")
   const [monthlyBudget, setMonthlyBudget] = useState(200000)
   const [profileMode, setProfileMode] = useState<ProfileMode>("standard")
@@ -126,7 +153,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfileMode(data.profile_mode ?? "standard")
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
       setUsdRate(data.usd_rate ?? 1350)
-      setApiKey(data.api_key ?? "")
+      setAiProvider((data.ai_provider as AIProvider) ?? "claude")
+      // api_key column stores Claude key (backward compat)
+      setApiKeyClaude(data.api_key ?? "")
+      setApiKeyOpenAI(data.api_key_openai ?? "")
+      setApiKeyGemini(data.api_key_gemini ?? "")
     }
   }
 
@@ -159,7 +190,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
 
     // Subscribe to future auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Handle password recovery link click
+      if (event === "PASSWORD_RECOVERY") {
+        setUser(session?.user ?? null)
+        setIsPasswordRecovery(true)
+        setView("auth")
+        return
+      }
+
       const u = session?.user ?? null
       setUser(u)
       if (u) {
@@ -169,7 +208,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         setTransactions([])
         setUserName("Usuario")
-        setApiKey("")
+        setApiKeyClaude("")
+        setApiKeyOpenAI("")
+        setApiKeyGemini("")
         setView("landing")
       }
     })
@@ -230,15 +271,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Profile sync ─────────────────────────────────────────────────────────────
-  // Accepts optional overrides to avoid stale-closure issues when callers
-  // call React setters and saveProfile in the same synchronous block.
   const saveProfile = async (overrides?: {
     userName?: string
     monthlyBudget?: number
     profileMode?: ProfileMode
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
-    apiKey?: string
+    aiProvider?: AIProvider
+    apiKeyClaude?: string
+    apiKeyOpenAI?: string
+    apiKeyGemini?: string
   }) => {
     if (!user) return
     await supabase.from("profiles").upsert({
@@ -248,7 +290,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile_mode: overrides?.profileMode ?? profileMode,
       exchange_rate_mode: overrides?.exchangeRateMode ?? exchangeRateMode,
       usd_rate: overrides?.usdRate ?? usdRate,
-      api_key: overrides?.apiKey ?? apiKey,
+      ai_provider: overrides?.aiProvider ?? aiProvider,
+      api_key: overrides?.apiKeyClaude ?? apiKeyClaude,
+      api_key_openai: overrides?.apiKeyOpenAI ?? apiKeyOpenAI,
+      api_key_gemini: overrides?.apiKeyGemini ?? apiKeyGemini,
       updated_at: new Date().toISOString(),
     })
   }
@@ -259,6 +304,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         user,
         loadingAuth,
         signOut,
+        isPasswordRecovery,
+        setIsPasswordRecovery,
         currentView,
         setView,
         transactions,
@@ -266,8 +313,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteTransaction,
         isProcessing,
         setIsProcessing,
+        aiProvider,
+        setAiProvider,
+        apiKeyClaude,
+        setApiKeyClaude,
+        apiKeyOpenAI,
+        setApiKeyOpenAI,
+        apiKeyGemini,
+        setApiKeyGemini,
         apiKey,
-        setApiKey,
         userName,
         setUserName,
         monthlyBudget,
