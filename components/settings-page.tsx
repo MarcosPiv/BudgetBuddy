@@ -41,6 +41,7 @@ export function SettingsPage() {
     setUsdRate,
     exchangeRateMode,
     setExchangeRateMode,
+    saveProfile,
   } = useApp()
 
   const [showKey, setShowKey] = useState(false)
@@ -67,7 +68,7 @@ export function SettingsPage() {
     { key: "mep", label: "MEP", emoji: "📈" },
   ]
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setApiKey(localKey)
     const budget = parseInt(localBudget) || 200000
     setMonthlyBudget(budget)
@@ -80,6 +81,7 @@ export function SettingsPage() {
       const rate = parseFloat(localUsdRate) || 1350
       setUsdRate(rate)
     }
+    await saveProfile()
     setSaved(true)
     setTimeout(() => {
       setSaved(false)

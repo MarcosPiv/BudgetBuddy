@@ -1,11 +1,13 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { type User } from "@supabase/supabase-js"
+import { supabase } from "@/lib/supabase"
 
 export type View = "landing" | "auth" | "settings" | "dashboard" | "profile"
 export type ProfileMode = "standard" | "expenses_only"
 export type TimeFilter = "week" | "month" | "year" | "custom"
-
+export type ExchangeRateMode = "api" | "manual"
 export type ExchangeRateType = "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL"
 
 export interface Transaction {
@@ -19,21 +21,46 @@ export interface Transaction {
   observation?: string
   currency: "ARS" | "USD"
   amountUsd?: number
-  /** Tasa en ARS aplicada al momento de registrar el gasto (inmutable) */
+  /** Tasa ARS bloqueada al momento del gasto — inmutable */
   txRate?: number
-  /** Tipo de dólar utilizado en este gasto */
   exchangeRateType?: ExchangeRateType | null
 }
 
-export type ExchangeRateMode = "api" | "manual"
+// ─── DB row → Transaction ─────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapTransaction(row: any): Transaction {
+  return {
+    id: row.id,
+    description: row.description,
+    amount: Number(row.amount),
+    type: row.type,
+    icon: row.icon || "ShoppingCart",
+    category: row.category,
+    date: new Date(row.date),
+    observation: row.observation ?? undefined,
+    currency: row.currency,
+    amountUsd: row.amount_usd != null ? Number(row.amount_usd) : undefined,
+    txRate: row.tx_rate != null ? Number(row.tx_rate) : undefined,
+    exchangeRateType: row.exchange_rate_type ?? null,
+  }
+}
 
 interface AppState {
+  // Auth
+  user: User | null
+  loadingAuth: boolean
+  signOut: () => Promise<void>
+  // Navigation
   currentView: View
   setView: (view: View) => void
+  // Transactions
   transactions: Transaction[]
   addTransaction: (t: Omit<Transaction, "id">) => void
+  deleteTransaction: (id: string) => void
+  // UI
   isProcessing: boolean
   setIsProcessing: (v: boolean) => void
+  // Profile
   apiKey: string
   setApiKey: (key: string) => void
   userName: string
@@ -46,162 +73,181 @@ interface AppState {
   setUsdRate: (n: number) => void
   exchangeRateMode: ExchangeRateMode
   setExchangeRateMode: (mode: ExchangeRateMode) => void
+  saveProfile: () => Promise<void>
+  // Filters
   timeFilter: TimeFilter
   setTimeFilter: (f: TimeFilter) => void
   customRange: { from: Date; to: Date }
   setCustomRange: (r: { from: Date; to: Date }) => void
 }
 
-function daysAgo(n: number): Date {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  d.setHours(12, 0, 0, 0)
-  return d
-}
-
-const defaultTransactions: Transaction[] = [
-  {
-    id: "1",
-    description: "Supermercado Dia",
-    amount: 45000,
-    type: "expense",
-    icon: "ShoppingCart",
-    category: "Comida",
-    date: daysAgo(0),
-    currency: "ARS",
-  },
-  {
-    id: "2",
-    description: "Freelance diseno web",
-    amount: 180000,
-    type: "income",
-    icon: "ArrowDownLeft",
-    category: "Freelance",
-    date: daysAgo(0),
-    currency: "ARS",
-  },
-  {
-    id: "3",
-    description: "Turno de Padel",
-    amount: 12000,
-    type: "expense",
-    icon: "Dumbbell",
-    category: "Deporte",
-    date: daysAgo(1),
-    currency: "ARS",
-  },
-  {
-    id: "4",
-    description: "Suscripcion ChatGPT Plus",
-    amount: 20,
-    type: "expense",
-    icon: "Code",
-    category: "Suscripciones",
-    date: daysAgo(1),
-    currency: "USD",
-    amountUsd: 20,
-    txRate: 1390,
-    exchangeRateType: "TARJETA",
-    observation: "Pago mensual con tarjeta de credito",
-  },
-  {
-    id: "5",
-    description: "Venta en MercadoLibre",
-    amount: 95000,
-    type: "income",
-    icon: "ArrowDownLeft",
-    category: "Ventas",
-    date: daysAgo(2),
-    currency: "ARS",
-  },
-  {
-    id: "6",
-    description: "Uber al centro",
-    amount: 8500,
-    type: "expense",
-    icon: "Car",
-    category: "Transporte",
-    date: daysAgo(2),
-    currency: "ARS",
-  },
-  {
-    id: "7",
-    description: "Cafe con amigos",
-    amount: 6000,
-    type: "expense",
-    icon: "Coffee",
-    category: "Salidas",
-    date: daysAgo(3),
-    currency: "ARS",
-    observation: "Fueron 3 cafes y una medialuna",
-  },
-  {
-    id: "8",
-    description: "Dominio .com",
-    amount: 12,
-    type: "expense",
-    icon: "Code",
-    category: "Suscripciones",
-    date: daysAgo(10),
-    currency: "USD",
-    amountUsd: 12,
-    txRate: 1060,
-    exchangeRateType: "BLUE",
-  },
-  {
-    id: "9",
-    description: "Compras del mes",
-    amount: 62000,
-    type: "expense",
-    icon: "ShoppingCart",
-    category: "Comida",
-    date: daysAgo(15),
-    currency: "ARS",
-  },
-  {
-    id: "10",
-    description: "Pago proyecto app",
-    amount: 350000,
-    type: "income",
-    icon: "ArrowDownLeft",
-    category: "Freelance",
-    date: daysAgo(20),
-    currency: "ARS",
-    observation: "Segundo pago del proyecto e-commerce",
-  },
-]
-
 const AppContext = createContext<AppState | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loadingAuth, setLoadingAuth] = useState(true)
   const [currentView, setView] = useState<View>("landing")
-  const [profileMode, setProfileMode] = useState<ProfileMode>("standard")
-  const [transactions, setTransactions] = useState<Transaction[]>(defaultTransactions)
+
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+
   const [apiKey, setApiKey] = useState("")
   const [userName, setUserName] = useState("Usuario")
   const [monthlyBudget, setMonthlyBudget] = useState(200000)
+  const [profileMode, setProfileMode] = useState<ProfileMode>("standard")
   const [usdRate, setUsdRate] = useState(1350)
   const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("month")
 
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("month")
   const now = new Date()
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date }>({
     from: new Date(now.getFullYear(), now.getMonth(), 1),
     to: now,
   })
 
+  // ── Data loaders ────────────────────────────────────────────────────────────
+  const loadProfile = async (userId: string) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single()
+
+    if (data) {
+      setUserName(data.user_name ?? "Usuario")
+      setMonthlyBudget(data.monthly_budget ?? 200000)
+      setProfileMode(data.profile_mode ?? "standard")
+      setExchangeRateMode(data.exchange_rate_mode ?? "api")
+      setUsdRate(data.usd_rate ?? 1350)
+      setApiKey(data.api_key ?? "")
+    }
+  }
+
+  const loadTransactions = async (userId: string) => {
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("date", { ascending: false })
+
+    if (data) {
+      setTransactions(data.map(mapTransaction))
+    }
+  }
+
+  // ── Auth listener ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // Check existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) {
+        Promise.all([loadProfile(u.id), loadTransactions(u.id)]).finally(() => {
+          setView("dashboard")
+          setLoadingAuth(false)
+        })
+      } else {
+        setLoadingAuth(false)
+      }
+    })
+
+    // Subscribe to future auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) {
+        Promise.all([loadProfile(u.id), loadTransactions(u.id)]).then(() => {
+          setView("dashboard")
+        })
+      } else {
+        setTransactions([])
+        setUserName("Usuario")
+        setApiKey("")
+        setView("landing")
+      }
+    })
+
+    return () => subscription.unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Auth actions ─────────────────────────────────────────────────────────────
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    // State cleanup handled by onAuthStateChange
+  }
+
+  // ── Transaction actions ──────────────────────────────────────────────────────
   const addTransaction = (t: Omit<Transaction, "id">) => {
-    setTransactions((prev) => [{ ...t, id: Date.now().toString() }, ...prev])
+    if (!user) return
+
+    // Optimistic update
+    const tempId = `temp-${Date.now()}`
+    setTransactions((prev) => [{ ...t, id: tempId }, ...prev])
+
+    supabase
+      .from("transactions")
+      .insert({
+        user_id: user.id,
+        description: t.description,
+        amount: t.amount,
+        type: t.type,
+        icon: t.icon,
+        category: t.category,
+        date: t.date instanceof Date ? t.date.toISOString() : t.date,
+        observation: t.observation ?? null,
+        currency: t.currency,
+        amount_usd: t.amountUsd ?? null,
+        tx_rate: t.txRate ?? null,
+        exchange_rate_type: t.exchangeRateType ?? null,
+      })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          // Rollback on failure
+          setTransactions((prev) => prev.filter((tx) => tx.id !== tempId))
+          return
+        }
+        if (data) {
+          setTransactions((prev) =>
+            prev.map((tx) => (tx.id === tempId ? mapTransaction(data) : tx))
+          )
+        }
+      })
+  }
+
+  const deleteTransaction = (id: string) => {
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+    supabase.from("transactions").delete().eq("id", id)
+  }
+
+  // ── Profile sync ─────────────────────────────────────────────────────────────
+  const saveProfile = async () => {
+    if (!user) return
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      user_name: userName,
+      monthly_budget: monthlyBudget,
+      profile_mode: profileMode,
+      exchange_rate_mode: exchangeRateMode,
+      usd_rate: usdRate,
+      api_key: apiKey,
+      updated_at: new Date().toISOString(),
+    })
   }
 
   return (
     <AppContext.Provider
       value={{
+        user,
+        loadingAuth,
+        signOut,
         currentView,
         setView,
         transactions,
         addTransaction,
+        deleteTransaction,
         isProcessing,
         setIsProcessing,
         apiKey,
@@ -216,6 +262,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUsdRate,
         exchangeRateMode,
         setExchangeRateMode,
+        saveProfile,
         timeFilter,
         setTimeFilter,
         customRange,

@@ -16,9 +16,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp } from "@/lib/app-context"
+import { supabase } from "@/lib/supabase"
 
 export function ProfilePage() {
-  const { setView, userName, setUserName } = useApp()
+  const { setView, userName, setUserName, saveProfile } = useApp()
   const [localName, setLocalName] = useState(userName)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -30,25 +31,27 @@ export function ProfilePage() {
   const [savedPassword, setSavedPassword] = useState(false)
   const [passwordError, setPasswordError] = useState("")
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     if (!localName.trim()) return
     setUserName(localName.trim())
+    await saveProfile()
     setSavedName(true)
     setTimeout(() => setSavedName(false), 2000)
   }
 
-  const handleSavePassword = () => {
+  const handleSavePassword = async () => {
     setPasswordError("")
-    if (!currentPassword) {
-      setPasswordError("Ingresa tu contrasena actual")
-      return
-    }
     if (newPassword.length < 6) {
-      setPasswordError("La nueva contrasena debe tener al menos 6 caracteres")
+      setPasswordError("La nueva contraseña debe tener al menos 6 caracteres")
       return
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError("Las contrasenas no coinciden")
+      setPasswordError("Las contraseñas no coinciden")
+      return
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) {
+      setPasswordError(error.message)
       return
     }
     setSavedPassword(true)

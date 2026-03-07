@@ -99,6 +99,7 @@ export function DashboardPage() {
     transactions,
     addTransaction,
     setView,
+    signOut,
     monthlyBudget,
     profileMode,
     userName,
@@ -466,7 +467,7 @@ export function DashboardPage() {
             variant="ghost"
             size="icon"
             className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-            onClick={() => setView("landing")}
+            onClick={signOut}
             aria-label="Salir"
           >
             <LogOut className="w-5 h-5" />
