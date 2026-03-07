@@ -33,8 +33,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useApp, type TimeFilter } from "@/lib/app-context"
+import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { Calendar } from "@/components/ui/calendar"
+import { ExchangeWidget } from "@/components/ui/exchange-widget"
+import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
 
@@ -57,6 +59,26 @@ interface Attachment {
   name: string
   url: string
   file: File
+}
+
+// ── Badge de tipo de cambio ───────────────────────────────────────────────────
+const RATE_BADGE_CONFIG: Record<ExchangeRateType, { label: string; className: string }> = {
+  BLUE:    { label: "Blue",    className: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  TARJETA: { label: "Tarjeta", className: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
+  OFICIAL: { label: "Oficial", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  MEP:     { label: "MEP",     className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  MANUAL:  { label: "Manual",  className: "bg-secondary text-muted-foreground border-border" },
+}
+
+function ExchangeTypeBadge({ type }: { type: ExchangeRateType }) {
+  const cfg = RATE_BADGE_CONFIG[type]
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide border ${cfg.className}`}
+    >
+      {cfg.label}
+    </span>
+  )
 }
 
 function formatDate(d: Date): string {
@@ -116,8 +138,12 @@ export function DashboardPage() {
   const [observation, setObservation] = useState("")
   const [showObservation, setShowObservation] = useState(false)
   const [newCurrency, setNewCurrency] = useState<"ARS" | "USD">("ARS")
-  const [newUsdRate, setNewUsdRate] = useState(usdRate)
+  const [newExRateType, setNewExRateType] = useState<ExchangeRateType>("BLUE")
+  const [newManualRate, setNewManualRate] = useState("")
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
+
+  // Cotizaciones en vivo para el selector de tipo de cambio en el formulario
+  const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
 
   // Time filter — chip row + inline calendar
   const [showCalendar, setShowCalendar] = useState(false)
@@ -294,6 +320,28 @@ export function DashboardPage() {
     )
   }
 
+  // Opciones del selector de tipo de cambio con valores en vivo
+  const rateTypeOptions: Array<{
+    key: ExchangeRateType
+    label: string
+    emoji: string
+    value: number | null | undefined
+  }> = [
+    { key: "BLUE",    label: "Blue",    emoji: "💵", value: liveRates.blue?.venta },
+    { key: "TARJETA", label: "Tarjeta", emoji: "💳", value: liveRates.tarjeta?.venta },
+    { key: "OFICIAL", label: "Oficial", emoji: "🏦", value: liveRates.oficial?.venta },
+    { key: "MEP",     label: "MEP",     emoji: "📈", value: liveRates.mep?.venta },
+    { key: "MANUAL",  label: "Manual",  emoji: "✏️",  value: null },
+  ]
+
+  // Tasa a aplicar según el tipo elegido al momento de registrar el gasto
+  const getAppliedRate = (): number => {
+    if (newCurrency === "ARS") return 1
+    if (newExRateType === "MANUAL") return parseFloat(newManualRate) || usdRate
+    const live = liveRates[newExRateType.toLowerCase() as keyof typeof liveRates]
+    return (live as { venta?: number } | null)?.venta ?? usdRate
+  }
+
   const handleMagicSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
@@ -303,7 +351,8 @@ export function DashboardPage() {
       attachments.map((a) => (a.type === "image" ? "Imagen: " + a.name : "Audio: " + a.name)).join(", ")
     const obs = observation.trim() || undefined
     const curr = newCurrency
-    const rate = newUsdRate
+    const appliedRate = getAppliedRate()
+    const rateType = curr === "USD" ? newExRateType : null
     setMagicInput("")
     setAttachments([])
     setObservation("")
@@ -325,7 +374,8 @@ export function DashboardPage() {
         date: new Date(),
         currency: curr,
         amountUsd: curr === "USD" ? amount : undefined,
-        txRate: curr === "USD" ? rate : undefined,
+        txRate: curr === "USD" ? appliedRate : undefined,
+        exchangeRateType: rateType,
         observation: obs,
       })
       setIsProcessing(false)
@@ -437,7 +487,7 @@ export function DashboardPage() {
 
       {/* ── Scrollable content ────────────────────────────────── */}
       <div className={`flex-1 flex flex-col lg:flex-row transition-[padding] duration-300 ease-out ${chatOpen ? "lg:pr-80 xl:pr-96" : ""}`}>
-        <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8 pb-36 lg:pb-8 max-w-3xl mx-auto w-full">
+        <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8 pb-56 lg:pb-52 max-w-3xl mx-auto w-full">
 
           {/* Greeting */}
           <motion.div
@@ -605,6 +655,16 @@ export function DashboardPage() {
             </motion.div>
           )}
 
+          {/* ── Exchange Rate Widget ──────────────────────────── */}
+          <motion.div
+            className="mb-4"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <ExchangeWidget />
+          </motion.div>
+
           {/* ── Transaction list ──────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -655,8 +715,11 @@ export function DashboardPage() {
                             <p className="text-sm font-medium text-foreground truncate">
                               {tx.description}
                             </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {tx.category} · {formatDate(new Date(tx.date))}
+                            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{tx.category} · {formatDate(new Date(tx.date))}</span>
+                              {isUsd && tx.exchangeRateType && (
+                                <ExchangeTypeBadge type={tx.exchangeRateType} />
+                              )}
                             </p>
                           </div>
                           <div className="flex flex-col items-end shrink-0 gap-0.5">
@@ -672,10 +735,7 @@ export function DashboardPage() {
                             </span>
                             {isUsd && (
                               <span className="text-[11px] text-muted-foreground tabular-nums">
-                                ~${(tx.amount * (tx.txRate ?? usdRate)).toLocaleString("es-AR")} ARS
-                                {tx.txRate && (
-                                  <span className="opacity-60"> @${tx.txRate.toLocaleString("es-AR")}</span>
-                                )}
+                                ~${(tx.amount * (tx.txRate ?? usdRate)).toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
                               </span>
                             )}
                           </div>
@@ -867,7 +927,7 @@ export function DashboardPage() {
                 )}
               </AnimatePresence>
 
-              {/* USD rate row */}
+              {/* ── Selector de tipo de dólar (aparece cuando moneda = USD) ── */}
               <AnimatePresence>
                 {newCurrency === "USD" && (
                   <motion.div
@@ -875,23 +935,70 @@ export function DashboardPage() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <div className="flex items-center gap-2 bg-chart-5/10 border border-chart-5/25 rounded-lg px-3 py-2">
-                      <DollarSign className="w-3.5 h-3.5 text-chart-5 shrink-0" />
-                      <span className="text-xs text-chart-5/80 font-medium whitespace-nowrap">
-                        1 USD =
-                      </span>
-                      <input
-                        type="number"
-                        value={newUsdRate}
-                        onChange={(e) => setNewUsdRate(Number(e.target.value))}
-                        className="flex-1 min-w-0 bg-transparent text-sm text-chart-5 font-mono outline-none"
-                        min={1}
-                        step={50}
-                        aria-label="Tasa de cambio"
-                      />
-                      <span className="text-xs text-chart-5/80 font-medium">ARS</span>
+                    {/* Chips de tipo de cambio */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {rateTypeOptions.map((opt) => {
+                        const isSelected = newExRateType === opt.key
+                        const hasValue = opt.value != null
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => setNewExRateType(opt.key)}
+                            className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
+                              isSelected
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-border/80"
+                            }`}
+                          >
+                            <span className="leading-none">{opt.emoji}</span>
+                            <span>{opt.label}</span>
+                            {opt.key !== "MANUAL" && (
+                              <span className={`tabular-nums font-mono ${isSelected ? "opacity-80" : "opacity-55"}`}>
+                                {hasValue
+                                  ? `· $${opt.value!.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`
+                                  : ratesLoading
+                                    ? "· …"
+                                    : ""}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
+
+                    {/* Input de cotización manual — expand suave */}
+                    <AnimatePresence>
+                      {newExRateType === "MANUAL" && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                          className="mt-2"
+                        >
+                          <div className="flex items-center gap-2 bg-chart-5/10 border border-chart-5/25 rounded-lg px-3 py-2">
+                            <DollarSign className="w-3.5 h-3.5 text-chart-5 shrink-0" />
+                            <span className="text-xs text-chart-5/80 font-medium whitespace-nowrap">
+                              1 USD =
+                            </span>
+                            <input
+                              type="number"
+                              value={newManualRate}
+                              onChange={(e) => setNewManualRate(e.target.value)}
+                              placeholder={usdRate.toString()}
+                              className="flex-1 min-w-0 bg-transparent text-sm text-chart-5 font-mono outline-none placeholder:text-chart-5/40"
+                              min={1}
+                              step={50}
+                              aria-label="Cotización manual"
+                            />
+                            <span className="text-xs text-chart-5/80 font-medium">ARS</span>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 )}
               </AnimatePresence>

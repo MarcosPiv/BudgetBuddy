@@ -6,6 +6,8 @@ export type View = "landing" | "auth" | "settings" | "dashboard" | "profile"
 export type ProfileMode = "standard" | "expenses_only"
 export type TimeFilter = "week" | "month" | "year" | "custom"
 
+export type ExchangeRateType = "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL"
+
 export interface Transaction {
   id: string
   description: string
@@ -17,8 +19,13 @@ export interface Transaction {
   observation?: string
   currency: "ARS" | "USD"
   amountUsd?: number
+  /** Tasa en ARS aplicada al momento de registrar el gasto (inmutable) */
   txRate?: number
+  /** Tipo de dólar utilizado en este gasto */
+  exchangeRateType?: ExchangeRateType | null
 }
+
+export type ExchangeRateMode = "api" | "manual"
 
 interface AppState {
   currentView: View
@@ -37,6 +44,8 @@ interface AppState {
   setProfileMode: (mode: ProfileMode) => void
   usdRate: number
   setUsdRate: (n: number) => void
+  exchangeRateMode: ExchangeRateMode
+  setExchangeRateMode: (mode: ExchangeRateMode) => void
   timeFilter: TimeFilter
   setTimeFilter: (f: TimeFilter) => void
   customRange: { from: Date; to: Date }
@@ -91,6 +100,8 @@ const defaultTransactions: Transaction[] = [
     date: daysAgo(1),
     currency: "USD",
     amountUsd: 20,
+    txRate: 1390,
+    exchangeRateType: "TARJETA",
     observation: "Pago mensual con tarjeta de credito",
   },
   {
@@ -134,6 +145,8 @@ const defaultTransactions: Transaction[] = [
     date: daysAgo(10),
     currency: "USD",
     amountUsd: 12,
+    txRate: 1060,
+    exchangeRateType: "BLUE",
   },
   {
     id: "9",
@@ -169,6 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState("Usuario")
   const [monthlyBudget, setMonthlyBudget] = useState(200000)
   const [usdRate, setUsdRate] = useState(1350)
+  const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("month")
 
   const now = new Date()
@@ -200,6 +214,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setProfileMode,
         usdRate,
         setUsdRate,
+        exchangeRateMode,
+        setExchangeRateMode,
         timeFilter,
         setTimeFilter,
         customRange,
