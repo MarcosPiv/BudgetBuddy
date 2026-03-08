@@ -30,6 +30,10 @@ import {
   DollarSign,
   StickyNote,
   ChevronRight,
+  Download,
+  Search,
+  CalendarIcon,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +43,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
@@ -197,6 +202,11 @@ export function DashboardPage() {
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null)
 
+  // Search, export, date picker
+  const [searchQuery, setSearchQuery] = useState("")
+  const [newTxDate, setNewTxDate] = useState<Date | null>(null)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+
   // Cotizaciones en vivo para el selector de tipo de cambio en el formulario
   const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
 
@@ -259,6 +269,46 @@ export function DashboardPage() {
     year: "Este año",
     custom: `${formatDateShort(customRange.from)} — ${formatDateShort(customRange.to)}`,
   }), [customRange.from, customRange.to])
+
+  // Transactions filtered by search query on top of the time filter
+  const displayedTransactions = useMemo(() => {
+    if (!searchQuery.trim()) return filteredTransactions
+    const q = searchQuery.toLowerCase()
+    return filteredTransactions.filter(tx =>
+      tx.description.toLowerCase().includes(q) ||
+      tx.category.toLowerCase().includes(q) ||
+      (tx.observation?.toLowerCase().includes(q) ?? false)
+    )
+  }, [filteredTransactions, searchQuery])
+
+  // Expenses broken down by category for the current period
+  const categoryBreakdown = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredTransactions
+      .filter(t => t.type === "expense")
+      .forEach(t => { map[t.category] = (map[t.category] || 0) + toArs(t) })
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredTransactions, usdRate])
+
+  const exportCSV = () => {
+    const header = "Fecha,Tipo,Descripción,Categoría,Monto,Moneda,Nota"
+    const rows = displayedTransactions.map(tx => {
+      const date = new Date(tx.date).toLocaleDateString("es-AR")
+      const type = tx.type === "expense" ? "Gasto" : "Ingreso"
+      const desc = `"${tx.description.replace(/"/g, '""')}"`
+      const obs = tx.observation ? `"${tx.observation.replace(/"/g, '""')}"` : ""
+      return [date, type, desc, tx.category, tx.amount, tx.currency, obs].join(",")
+    })
+    const csv = [header, ...rows].join("\n")
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `BudgetBuddy-${filterLabels[timeFilter].replace(/[\s/]/g, "-")}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -414,10 +464,13 @@ export function DashboardPage() {
     const appliedRate = getAppliedRate()
     const rateType = curr === "USD" ? newExRateType : null
 
+    const txDate = newTxDate ?? new Date()
+
     setMagicInput("")
     setAttachments([])
     setObservation("")
     setShowObservation(false)
+    setNewTxDate(null)
 
     try {
       // Convert File objects to base64 AIAttachments
@@ -444,7 +497,7 @@ export function DashboardPage() {
         type: result.type,
         icon: result.icon,
         category: result.category,
-        date: new Date(),
+        date: txDate,
         currency: curr,
         amountUsd: curr === "USD" ? result.amount : undefined,
         txRate: curr === "USD" ? appliedRate : undefined,
@@ -910,6 +963,32 @@ export function DashboardPage() {
                     : `Excediste ${formatCurrency(Math.abs(balance))}`}
                 </span>
               </div>
+
+              {/* Budget alerts */}
+              <AnimatePresence>
+                {spentPercent >= 80 && spentPercent < 100 && (
+                  <motion.div
+                    className="mt-3 flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Usaste el {spentPercent.toFixed(0)}% de tu presupuesto. ¡Atención!</span>
+                  </motion.div>
+                )}
+                {spentPercent >= 100 && (
+                  <motion.div
+                    className="mt-3 flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2.5"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>¡Superaste tu presupuesto mensual! Revisá tus gastos.</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ) : (
             <motion.div
@@ -953,20 +1032,102 @@ export function DashboardPage() {
             <ExchangeWidget />
           </motion.div>
 
+          {/* ── Category breakdown ────────────────────────────── */}
+          <AnimatePresence>
+            {categoryBreakdown.length > 0 && (
+              <motion.div
+                className="rounded-2xl border border-border bg-card p-4 mb-4"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+              >
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  Gastos por categoría
+                </p>
+                <div className="flex flex-col gap-2.5">
+                  {categoryBreakdown.map(([cat, amount]) => {
+                    const maxAmount = categoryBreakdown[0][1]
+                    const pct = (amount / maxAmount) * 100
+                    const Icon = iconMap[CATEGORY_ICON_MAP[cat] ?? "ShoppingCart"] || ShoppingCart
+                    return (
+                      <div key={cat} className="flex items-center gap-2.5">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-secondary shrink-0">
+                          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                        </div>
+                        <span className="text-xs text-muted-foreground w-[4.5rem] shrink-0 truncate">{cat}</span>
+                        <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-primary/60 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.7, ease: "easeOut" }}
+                          />
+                        </div>
+                        <span className="text-xs text-foreground tabular-nums font-medium w-28 text-right shrink-0">
+                          {formatCurrency(amount)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── Transaction list ──────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
           >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Movimientos ({filteredTransactions.length})
-              </p>
-              {filteredTransactions.length > 0 && (
-                <p className="md:hidden text-[10px] text-muted-foreground/50 flex items-center gap-1">
-                  <span>Mantenés pulsado para editar o eliminar</span>
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Movimientos{" "}
+                  {searchQuery.trim()
+                    ? `(${displayedTransactions.length} de ${filteredTransactions.length})`
+                    : `(${filteredTransactions.length})`}
                 </p>
+                <div className="flex items-center gap-2">
+                  {filteredTransactions.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={exportCSV}
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      aria-label="Exportar CSV"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Exportar</span>
+                    </button>
+                  )}
+                  {filteredTransactions.length > 0 && (
+                    <p className="md:hidden text-[10px] text-muted-foreground/50">
+                      Pulsá para editar o eliminar
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {filteredTransactions.length > 0 && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por descripción o categoría..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-8 py-2 text-sm bg-secondary/50 border border-border rounded-xl text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/40 transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -974,10 +1135,14 @@ export function DashboardPage() {
               <div className="text-center py-12 text-muted-foreground text-sm">
                 No hay movimientos en este periodo.
               </div>
+            ) : displayedTransactions.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground text-sm">
+                Sin resultados para &ldquo;{searchQuery}&rdquo;
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <AnimatePresence mode="popLayout">
-                  {filteredTransactions.map((tx) => {
+                  {displayedTransactions.map((tx) => {
                     const Icon = iconMap[tx.icon] || ShoppingCart
                     const isIncome = tx.type === "income"
                     const isExpanded = expandedTx === tx.id
@@ -1446,7 +1611,50 @@ export function DashboardPage() {
                 </div>
 
                 {/* Multimodal toolbar */}
-                <div className="grid grid-cols-4 gap-1 pt-2 border-t border-border/40">
+                <div className="grid grid-cols-5 gap-1 pt-2 border-t border-border/40">
+
+                  {/* Date picker */}
+                  <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                          newTxDate
+                            ? "bg-accent/15 text-accent"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        }`}
+                        aria-label="Seleccionar fecha"
+                      >
+                        <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {newTxDate
+                            ? newTxDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+                            : "Fecha"}
+                        </span>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-card border-border" align="start" side="top">
+                      <Calendar
+                        mode="single"
+                        selected={newTxDate ?? undefined}
+                        onSelect={(date) => { setNewTxDate(date ?? null); setShowDatePicker(false) }}
+                        disabled={(date) => date > new Date()}
+                        locale={es}
+                        initialFocus
+                      />
+                      {newTxDate && (
+                        <div className="px-3 pb-3 border-t border-border pt-2">
+                          <button
+                            type="button"
+                            className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 transition-colors cursor-pointer"
+                            onClick={() => { setNewTxDate(null); setShowDatePicker(false) }}
+                          >
+                            Usar fecha de hoy
+                          </button>
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
 
                   {/* Note */}
                   <button
