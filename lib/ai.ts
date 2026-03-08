@@ -13,10 +13,17 @@ export interface ChatTurn {
   text: string
 }
 
+export interface AIAttachment {
+  type: "image" | "audio"
+  base64: string
+  mimeType: string
+  file?: File // required for OpenAI Whisper audio transcription
+}
+
 const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft"]
 const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
 
-const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. Tu única tarea es analizar texto en lenguaje natural y extraer información de una transacción financiera.
+const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. Tu única tarea es analizar texto, imágenes o audio en lenguaje natural y extraer información de una transacción financiera.
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown, sin backticks.
 
@@ -25,11 +32,13 @@ Formato exacto cuando hay transacción:
 
 Para ingresos usar type:"income".
 
-Si el texto NO describe una transacción financiera respondé exactamente:
+Si el contenido NO describe una transacción financiera respondé exactamente:
 {"type":"unknown"}
 
 Reglas:
 - amount siempre es un número positivo (sin signos)
+- Si hay imagen de ticket o factura: extraé el monto total y el tipo de establecimiento
+- Si hay audio: transcribí y analizá el contenido
 - type "income" = cobro, ingreso, salario, venta, me pagaron, transferencia recibida
 - type "expense" = gasto, compra, pago, transferencia enviada, gasté
 - category y icon según el tema:
@@ -59,7 +68,9 @@ Instrucciones:
 }
 
 function buildUserMessage(input: string): string {
-  return `Texto: "${input}"`
+  return input.trim()
+    ? `Texto: "${input}"`
+    : "Analizá el contenido adjunto y extraé la transacción financiera si existe."
 }
 
 function extractAndValidate(raw: string): ParsedTransaction {
@@ -77,7 +88,6 @@ function extractAndValidate(raw: string): ParsedTransaction {
   if (!parsed.type) throw new Error("Respuesta incompleta de la IA.")
   if (parsed.type === "unknown") return { type: "unknown", description: "", amount: 0, category: "", icon: "" }
 
-  // Validate and sanitize
   if (!["expense", "income"].includes(parsed.type)) parsed.type = "expense"
   if (typeof parsed.amount !== "number" || parsed.amount <= 0) throw new Error("Monto inválido en la respuesta.")
   if (!VALID_ICONS.includes(parsed.icon)) parsed.icon = "ShoppingCart"
@@ -100,8 +110,51 @@ function translateError(msg: string): string {
   return msg
 }
 
+// ── Audio transcription (Whisper / OpenAI) ───────────────────────────────────
+async function transcribeWithWhisper(apiKey: string, file: File): Promise<string> {
+  const form = new FormData()
+  form.append("file", file, file.name)
+  form.append("model", "whisper-1")
+  form.append("language", "es")
+
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}` },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(translateError(err?.error?.message || `Error transcribiendo audio ${res.status}`))
+  }
+
+  const data = await res.json()
+  return data.text?.trim() || ""
+}
+
 // ── Claude (Anthropic) ────────────────────────────────────────────────────────
-async function callClaude(apiKey: string, input: string): Promise<ParsedTransaction> {
+async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  const images = attachments?.filter(a => a.type === "image") ?? []
+  const audios = attachments?.filter(a => a.type === "audio") ?? []
+
+  if (audios.length > 0) {
+    throw new Error("Claude no soporta audio. Cambiá a Gemini o OpenAI en Ajustes para usar audio.")
+  }
+
+  const userContent = images.length > 0
+    ? [
+        ...images.map(img => ({
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: (img.mimeType || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+            data: img.base64,
+          },
+        })),
+        { type: "text" as const, text: buildUserMessage(input) },
+      ]
+    : buildUserMessage(input)
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -114,7 +167,7 @@ async function callClaude(apiKey: string, input: string): Promise<ParsedTransact
       model: "claude-3-5-haiku-20241022",
       max_tokens: 150,
       system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserMessage(input) }],
+      messages: [{ role: "user", content: userContent }],
     }),
   })
 
@@ -158,7 +211,30 @@ async function callClaudeChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
-async function callOpenAI(apiKey: string, input: string): Promise<ParsedTransaction> {
+async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  const images = attachments?.filter(a => a.type === "image") ?? []
+  const audios = attachments?.filter(a => a.type === "audio") ?? []
+
+  // Transcribe audio with Whisper first
+  let textInput = input
+  for (const audio of audios) {
+    if (!audio.file) continue
+    const transcript = await transcribeWithWhisper(apiKey, audio.file)
+    if (transcript) {
+      textInput = textInput ? `${textInput} (audio: ${transcript})` : transcript
+    }
+  }
+
+  const userContent = images.length > 0
+    ? [
+        ...images.map(img => ({
+          type: "image_url" as const,
+          image_url: { url: `data:${img.mimeType || "image/jpeg"};base64,${img.base64}` },
+        })),
+        { type: "text" as const, text: buildUserMessage(textInput) },
+      ]
+    : buildUserMessage(textInput)
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -169,10 +245,10 @@ async function callOpenAI(apiKey: string, input: string): Promise<ParsedTransact
       model: "gpt-4o-mini",
       max_tokens: 150,
       temperature: 0.1,
-      response_format: { type: "json_object" },
+      response_format: images.length > 0 ? undefined : { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserMessage(input) },
+        { role: "user", content: userContent },
       ],
     }),
   })
@@ -218,7 +294,16 @@ async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── Gemini (Google) ───────────────────────────────────────────────────────────
-async function callGemini(apiKey: string, input: string): Promise<ParsedTransaction> {
+async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  const parts: object[] = []
+
+  // Add all attachments (images + audio) as inline_data
+  for (const att of attachments ?? []) {
+    parts.push({ inline_data: { mime_type: att.mimeType, data: att.base64 } })
+  }
+
+  parts.push({ text: buildUserMessage(input) })
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
@@ -226,7 +311,7 @@ async function callGemini(apiKey: string, input: string): Promise<ParsedTransact
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: buildUserMessage(input) }] }],
+        contents: [{ parts }],
         generationConfig: {
           maxOutputTokens: 150,
           temperature: 0.1,
@@ -282,12 +367,13 @@ async function callGeminiChat(apiKey: string, context: string, history: ChatTurn
 export async function callAI(
   provider: AIProvider,
   apiKey: string,
-  input: string
+  input: string,
+  attachments?: AIAttachment[]
 ): Promise<ParsedTransaction> {
   try {
-    if (provider === "claude") return await callClaude(apiKey, input)
-    if (provider === "openai") return await callOpenAI(apiKey, input)
-    return await callGemini(apiKey, input)
+    if (provider === "claude") return await callClaude(apiKey, input, attachments)
+    if (provider === "openai") return await callOpenAI(apiKey, input, attachments)
+    return await callGemini(apiKey, input, attachments)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))

@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
-import { callAI, callAIChat, type ChatTurn } from "@/lib/ai"
+import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
 import { ExchangeWidget } from "@/components/ui/exchange-widget"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
@@ -80,6 +80,15 @@ function ExchangeTypeBadge({ type }: { type: ExchangeRateType }) {
       {cfg.label}
     </span>
   )
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "")
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 function formatDate(d: Date): string {
@@ -358,9 +367,8 @@ export function DashboardPage() {
     setIsProcessing(true)
     setAiError(null)
 
-    const input =
-      magicInput ||
-      attachments.map((a) => (a.type === "image" ? "Imagen adjunta: " + a.name : "Audio adjunto: " + a.name)).join(", ")
+    const textInput = magicInput.trim()
+    const capturedAttachments = [...attachments]
     const obs = observation.trim() || undefined
     const curr = newCurrency
     const appliedRate = getAppliedRate()
@@ -372,7 +380,17 @@ export function DashboardPage() {
     setShowObservation(false)
 
     try {
-      const result = await callAI(aiProvider, apiKey, input)
+      // Convert File objects to base64 AIAttachments
+      const aiAttachments: AIAttachment[] = await Promise.all(
+        capturedAttachments.map(async (a) => ({
+          type: a.type,
+          base64: await fileToBase64(a.file),
+          mimeType: a.file.type || (a.type === "audio" ? "audio/webm" : "image/jpeg"),
+          file: a.file,
+        }))
+      )
+
+      const result = await callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined)
 
       if (result.type === "unknown") {
         setAiError("No detecté una transacción. Describí un gasto o ingreso (ej: 'gasté 5000 en comida').")
@@ -417,6 +435,15 @@ export function DashboardPage() {
       .slice(0, 3)
       .map(([cat, amt]) => `${cat}: ${formatCurrency(amt)}`)
       .join(", ")
+    const txLines = filteredTransactions
+      .slice(0, 50)
+      .map(t => {
+        const dateStr = t.date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+        const typeStr = t.type === "expense" ? "Gasto" : "Ingreso"
+        return `${dateStr} · ${typeStr} · ${t.description} · ${t.category} · ${formatCurrency(toArs(t))}`
+      })
+      .join("\n")
+
     const lines = [
       `Período: ${filterLabels[timeFilter]}`,
       `Ingresos totales: ${formatCurrency(totalIncome)}`,
@@ -425,6 +452,7 @@ export function DashboardPage() {
       isExpensesOnly && monthlyBudget ? `Presupuesto mensual: ${formatCurrency(monthlyBudget)}` : null,
       topCategories ? `Top categorías de gastos: ${topCategories}` : null,
       `Transacciones en el período: ${filteredTransactions.length}`,
+      txLines ? `\nDetalle de transacciones:\n${txLines}` : null,
     ]
     return lines.filter(Boolean).join("\n")
   }
