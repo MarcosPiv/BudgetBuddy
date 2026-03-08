@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
+import { callAI } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
 import { ExchangeWidget } from "@/components/ui/exchange-widget"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
@@ -105,6 +106,7 @@ export function DashboardPage() {
     userName,
     usdRate,
     apiKey,
+    aiProvider,
     timeFilter,
     setTimeFilter,
     customRange,
@@ -341,7 +343,7 @@ export function DashboardPage() {
     return (live as { venta?: number } | null)?.venta ?? usdRate
   }
 
-  const handleMagicSubmit = (e: React.FormEvent) => {
+  const handleMagicSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
 
@@ -350,41 +352,52 @@ export function DashboardPage() {
       setTimeout(() => setAiError(null), 4000)
       return
     }
+
     setIsProcessing(true)
+    setAiError(null)
+
     const input =
       magicInput ||
-      attachments.map((a) => (a.type === "image" ? "Imagen: " + a.name : "Audio: " + a.name)).join(", ")
+      attachments.map((a) => (a.type === "image" ? "Imagen adjunta: " + a.name : "Audio adjunto: " + a.name)).join(", ")
     const obs = observation.trim() || undefined
     const curr = newCurrency
     const appliedRate = getAppliedRate()
     const rateType = curr === "USD" ? newExRateType : null
+
     setMagicInput("")
     setAttachments([])
     setObservation("")
     setShowObservation(false)
-    setTimeout(() => {
-      const categories = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud"]
-      const icons = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ShoppingCart", "ShoppingCart"]
-      const idx = Math.floor(Math.random() * categories.length)
-      const amount =
-        curr === "USD"
-          ? Math.floor(Math.random() * 50) + 5
-          : Math.floor(Math.random() * 30000) + 2000
+
+    try {
+      const result = await callAI(aiProvider, apiKey, input)
+
+      if (result.type === "unknown") {
+        setAiError("No detecté una transacción. Describí un gasto o ingreso (ej: 'gasté 5000 en comida').")
+        setTimeout(() => setAiError(null), 5000)
+        return
+      }
+
       addTransaction({
-        description: input.length > 50 ? input.slice(0, 50) + "..." : input,
-        amount,
-        type: "expense",
-        icon: icons[idx],
-        category: categories[idx],
+        description: result.description,
+        amount: result.amount,
+        type: result.type,
+        icon: result.icon,
+        category: result.category,
         date: new Date(),
         currency: curr,
-        amountUsd: curr === "USD" ? amount : undefined,
+        amountUsd: curr === "USD" ? result.amount : undefined,
         txRate: curr === "USD" ? appliedRate : undefined,
         exchangeRateType: rateType,
         observation: obs,
       })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al procesar."
+      setAiError(msg)
+      setTimeout(() => setAiError(null), 6000)
+    } finally {
       setIsProcessing(false)
-    }, 2000)
+    }
   }
 
   const handleChatSubmit = (e: React.FormEvent) => {
