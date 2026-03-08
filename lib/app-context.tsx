@@ -60,6 +60,7 @@ interface AppState {
   transactions: Transaction[]
   addTransaction: (t: Omit<Transaction, "id">, onError?: (msg: string) => void) => void
   deleteTransaction: (id: string, onError?: (msg: string) => void) => void
+  updateTransaction: (id: string, updates: Partial<Omit<Transaction, "id">>, onError?: (msg: string) => void) => void
   // UI
   isProcessing: boolean
   setIsProcessing: (v: boolean) => void
@@ -290,6 +291,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
   }
 
+  const updateTransaction = (id: string, updates: Partial<Omit<Transaction, "id">>, onError?: (msg: string) => void) => {
+    const backup = transactions.find(tx => tx.id === id)
+    if (!backup) return
+    setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...updates } : tx))
+    const merged = { ...backup, ...updates }
+    supabase
+      .from("transactions")
+      .update({
+        description: merged.description,
+        amount: merged.amount,
+        type: merged.type,
+        icon: merged.icon,
+        category: merged.category,
+        date: merged.date instanceof Date ? merged.date.toISOString() : merged.date,
+        observation: merged.observation ?? null,
+        currency: merged.currency,
+        amount_usd: merged.amountUsd ?? null,
+        tx_rate: merged.txRate ?? null,
+        exchange_rate_type: merged.exchangeRateType ?? null,
+      })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          setTransactions(prev => prev.map(tx => tx.id === id ? backup : tx))
+          onError?.("No se pudo actualizar la transacción. Verificá tu conexión.")
+        }
+      })
+  }
+
   // ── Profile sync ─────────────────────────────────────────────────────────────
   const saveProfile = async (overrides?: {
     userName?: string
@@ -330,6 +360,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     transactions,
     addTransaction,
     deleteTransaction,
+    updateTransaction,
     isProcessing,
     setIsProcessing,
     aiProvider,

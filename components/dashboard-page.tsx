@@ -24,6 +24,7 @@ import {
   Mic,
   MicOff,
   Trash2,
+  Pencil,
   TrendingUp,
   TrendingDown,
   DollarSign,
@@ -32,7 +33,11 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
@@ -48,6 +53,20 @@ const iconMap: Record<string, React.ElementType> = {
   Car,
   Coffee,
   ArrowDownLeft,
+}
+
+const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
+
+const CATEGORY_ICON_MAP: Record<string, string> = {
+  Comida: "ShoppingCart",
+  Transporte: "Car",
+  Salidas: "Coffee",
+  Suscripciones: "Code",
+  Deporte: "Dumbbell",
+  Educacion: "Dumbbell",
+  Salud: "Dumbbell",
+  Trabajo: "ArrowDownLeft",
+  General: "ShoppingCart",
 }
 
 interface ChatMessage {
@@ -108,6 +127,8 @@ export function DashboardPage() {
   const {
     transactions,
     addTransaction,
+    deleteTransaction,
+    updateTransaction,
     setView,
     signOut,
     monthlyBudget,
@@ -156,6 +177,22 @@ export function DashboardPage() {
   const [newManualRate, setNewManualRate] = useState("")
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+
+  // Edit & long-press
+  const [editingTx, setEditingTx] = useState<import("@/lib/app-context").Transaction | null>(null)
+  const [editForm, setEditForm] = useState({
+    description: "",
+    amount: "",
+    type: "expense" as "expense" | "income",
+    category: "General",
+    icon: "ShoppingCart",
+    date: "",
+    currency: "ARS" as "ARS" | "USD",
+    txRate: "",
+    observation: "",
+  })
+  const [longPressId, setLongPressId] = useState<string | null>(null)
+  const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Cotizaciones en vivo para el selector de tipo de cambio en el formulario
   const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
@@ -492,6 +529,60 @@ export function DashboardPage() {
       setChatMessages(prev => [...prev, { role: "bot", text: msg }])
     } finally {
       setIsChatProcessing(false)
+    }
+  }
+
+  const openEdit = (tx: import("@/lib/app-context").Transaction) => {
+    setEditingTx(tx)
+    setLongPressId(null)
+    setEditForm({
+      description: tx.description,
+      amount: String(tx.amount),
+      type: tx.type,
+      category: tx.category,
+      icon: tx.icon,
+      date: new Date(tx.date).toISOString().split("T")[0],
+      currency: tx.currency,
+      txRate: String(tx.txRate ?? ""),
+      observation: tx.observation ?? "",
+    })
+  }
+
+  const handleSaveEdit = () => {
+    if (!editingTx) return
+    const amount = parseFloat(editForm.amount)
+    if (!amount || amount <= 0) return
+    updateTransaction(editingTx.id, {
+      description: editForm.description.trim() || "Transacción",
+      amount,
+      type: editForm.type,
+      icon: editForm.icon,
+      category: editForm.category,
+      date: new Date(editForm.date + "T12:00:00"),
+      currency: editForm.currency,
+      amountUsd: editForm.currency === "USD" ? amount : undefined,
+      txRate: editForm.currency === "USD" ? (parseFloat(editForm.txRate) || usdRate) : undefined,
+      exchangeRateType: editForm.currency === "USD" ? (editingTx.exchangeRateType ?? "MANUAL") : null,
+      observation: editForm.observation.trim() || undefined,
+    }, (msg) => {
+      setAiError(msg)
+      setTimeout(() => setAiError(null), 5000)
+    })
+    setEditingTx(null)
+  }
+
+  const handleTouchStart = (txId: string) => {
+    lpTimerRef.current = setTimeout(() => {
+      setLongPressId(txId)
+      setExpandedTx(null)
+      if (navigator.vibrate) navigator.vibrate(40)
+    }, 500)
+  }
+
+  const handleTouchEnd = () => {
+    if (lpTimerRef.current) {
+      clearTimeout(lpTimerRef.current)
+      lpTimerRef.current = null
     }
   }
 
@@ -881,11 +972,15 @@ export function DashboardPage() {
                         initial={{ opacity: 0, x: -16 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 16 }}
+                        className="group"
                       >
-                        <button
-                          type="button"
-                          className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 hover:bg-secondary/30 active:bg-secondary/50 transition-colors cursor-pointer text-left"
-                          onClick={() => setExpandedTx(isExpanded ? null : tx.id)}
+                        {/* Card row */}
+                        <div
+                          className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 hover:bg-secondary/30 active:bg-secondary/50 transition-colors cursor-pointer text-left select-none"
+                          onClick={() => { if (longPressId !== tx.id) setExpandedTx(isExpanded ? null : tx.id) }}
+                          onTouchStart={() => handleTouchStart(tx.id)}
+                          onTouchEnd={handleTouchEnd}
+                          onTouchMove={handleTouchEnd}
                         >
                           <div
                             className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${
@@ -926,6 +1021,27 @@ export function DashboardPage() {
                               </span>
                             )}
                           </div>
+
+                          {/* Desktop action buttons — visible on hover */}
+                          <div className="hidden md:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                              onClick={(e) => { e.stopPropagation(); openEdit(tx) }}
+                              aria-label="Editar movimiento"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                              onClick={(e) => { e.stopPropagation(); deleteTransaction(tx.id, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) }) }}
+                              aria-label="Eliminar movimiento"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
                           {tx.observation && (
                             <ChevronRight
                               className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${
@@ -933,7 +1049,47 @@ export function DashboardPage() {
                               }`}
                             />
                           )}
-                        </button>
+                        </div>
+
+                        {/* Mobile long-press action row */}
+                        <AnimatePresence>
+                          {longPressId === tx.id && (
+                            <motion.div
+                              className="flex md:hidden items-center gap-2 mt-1 px-2 py-2 rounded-xl bg-secondary/80 border border-border"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.18 }}
+                            >
+                              <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium cursor-pointer active:bg-primary/20"
+                                onClick={() => openEdit(tx)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-destructive/10 text-destructive text-sm font-medium cursor-pointer active:bg-destructive/20"
+                                onClick={() => { deleteTransaction(tx.id, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) }); setLongPressId(null) }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Eliminar
+                              </button>
+                              <button
+                                type="button"
+                                className="p-2 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+                                onClick={() => setLongPressId(null)}
+                                aria-label="Cerrar"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Observation expand */}
                         <AnimatePresence>
                           {isExpanded && tx.observation && (
                             <motion.div
@@ -1370,6 +1526,156 @@ export function DashboardPage() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* ── Edit transaction dialog ───────────────────────── */}
+      <Dialog open={!!editingTx} onOpenChange={(open) => { if (!open) setEditingTx(null) }}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Editar movimiento</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-1">
+            {/* Type toggle */}
+            <div className="flex gap-2">
+              {(["expense", "income"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer border ${
+                    editForm.type === t
+                      ? t === "expense"
+                        ? "bg-destructive/10 text-destructive border-destructive/30"
+                        : "bg-primary/10 text-primary border-primary/30"
+                      : "border-border text-muted-foreground hover:bg-secondary"
+                  }`}
+                  onClick={() => setEditForm(f => ({ ...f, type: t }))}
+                >
+                  {t === "expense" ? "Gasto" : "Ingreso"}
+                </button>
+              ))}
+            </div>
+
+            {/* Description */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Descripción</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                className="bg-secondary/50 border-border h-10"
+                placeholder="Descripción del movimiento"
+              />
+            </div>
+
+            {/* Amount + Currency row */}
+            <div className="flex gap-2">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <Label className="text-xs text-muted-foreground">Monto</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                  className="bg-secondary/50 border-border h-10"
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Moneda</Label>
+                <div className="flex gap-1">
+                  {(["ARS", "USD"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`px-3 h-10 rounded-lg text-sm font-semibold transition-colors cursor-pointer border ${
+                        editForm.currency === c
+                          ? "bg-primary/10 text-primary border-primary/30"
+                          : "border-border text-muted-foreground hover:bg-secondary"
+                      }`}
+                      onClick={() => setEditForm(f => ({ ...f, currency: c }))}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* USD rate */}
+            {editForm.currency === "USD" && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Tipo de cambio (ARS por USD)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editForm.txRate}
+                  onChange={(e) => setEditForm(f => ({ ...f, txRate: e.target.value }))}
+                  className="bg-secondary/50 border-border h-10"
+                  placeholder={String(usdRate)}
+                />
+              </div>
+            )}
+
+            {/* Category */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Categoría</Label>
+              <Select
+                value={editForm.category}
+                onValueChange={(val) => setEditForm(f => ({ ...f, category: val, icon: CATEGORY_ICON_MAP[val] ?? "ShoppingCart" }))}
+              >
+                <SelectTrigger className="bg-secondary/50 border-border h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {VALID_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Fecha</Label>
+              <Input
+                type="date"
+                value={editForm.date}
+                onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
+                className="bg-secondary/50 border-border h-10"
+              />
+            </div>
+
+            {/* Observation */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Nota (opcional)</Label>
+              <Textarea
+                value={editForm.observation}
+                onChange={(e) => setEditForm(f => ({ ...f, observation: e.target.value }))}
+                className="bg-secondary/50 border-border resize-none text-sm"
+                rows={2}
+                placeholder="Ej: Incluye propina, cuotas..."
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 mt-1">
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setEditingTx(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              onClick={handleSaveEdit}
+              disabled={!editForm.amount || parseFloat(editForm.amount) <= 0}
+            >
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Live camera modal ─────────────────────────────── */}
       <AnimatePresence>
