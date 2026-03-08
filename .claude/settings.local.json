@@ -3,7 +3,24 @@
     "allow": [
       "Bash(wc:*)",
       "Bash(head:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(cd \"C:\\\\Users\\\\mpivi\\\\OneDrive\\\\Desktop\\\\BudgetBuddy\" && npm run build 2>&1)",
+      "Bash(cd /c/Users/mpivi/OneDrive/Desktop/BudgetBuddy && npm run build 2>&1)",
+      "Bash(cd C:\\\\Users\\\\mpivi\\\\OneDrive\\\\Desktop\\\\BudgetBuddy:*)",
+      "mcp__claude_ai_Supabase__list_organizations",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__get_cost",
+      "mcp__claude_ai_Supabase__confirm_cost",
+      "mcp__claude_ai_Supabase__create_project",
+      "mcp__claude_ai_Supabase__get_project_url",
+      "mcp__claude_ai_Supabase__get_publishable_keys",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(cd \"C:\\\\Users\\\\mpivi\\\\OneDrive\\\\Desktop\\\\BudgetBuddy\" && ls -la | grep -iE \"eslint|lint\" && cat .eslintrc* 2>/dev/null || cat eslint.config* 2>/dev/null)",
+      "Bash(cd \"C:\\\\Users\\\\mpivi\\\\OneDrive\\\\Desktop\\\\BudgetBuddy\" && npm run lint 2>&1)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(cd \"C:/Users/mpivi/OneDrive/Desktop/BudgetBuddy\" && npm run build 2>&1)",
+      "Bash(cd:*)",
+      "Bash(cd \"C:/Users/mpivi/OneDrive/Desktop/BudgetBuddy\" && git push origin main 2>&1)"
     ]
   }
 }

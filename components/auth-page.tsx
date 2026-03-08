@@ -79,7 +79,13 @@ export function AuthPage() {
         if (err) throw err
         // Navigation handled by onAuthStateChange in AppProvider
       } else {
-        const { data, error: err } = await supabase.auth.signUp({ email, password })
+        const { data, error: err } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+          },
+        })
         if (err) throw err
 
         // Save name to profile immediately after signup
@@ -124,7 +130,9 @@ export function AuthPage() {
     setLoading(true)
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
-        redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+        redirectTo: typeof window !== "undefined"
+          ? `${window.location.origin}/reset-password`
+          : undefined,
       })
       if (err) throw err
       setSuccessMsg("Te enviamos un email con el link para restablecer tu contraseña. Revisá tu bandeja de entrada.")
