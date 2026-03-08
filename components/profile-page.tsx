@@ -19,7 +19,7 @@ import { useApp } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 
 export function ProfilePage() {
-  const { setView, userName, setUserName, saveProfile } = useApp()
+  const { setView, userName, setUserName, saveProfile, user } = useApp()
   const [localName, setLocalName] = useState(userName)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -30,6 +30,7 @@ export function ProfilePage() {
   const [savedName, setSavedName] = useState(false)
   const [savedPassword, setSavedPassword] = useState(false)
   const [passwordError, setPasswordError] = useState("")
+  const [passwordLoading, setPasswordLoading] = useState(false)
 
   const handleSaveName = async () => {
     if (!localName.trim()) return
@@ -43,23 +44,46 @@ export function ProfilePage() {
   const handleSavePassword = async () => {
     setPasswordError("")
     if (newPassword.length < 6) {
-      setPasswordError("La nueva contraseña debe tener al menos 6 caracteres")
+      setPasswordError("La nueva contraseña debe tener al menos 6 caracteres.")
       return
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError("Las contraseñas no coinciden")
+      setPasswordError("Las contraseñas no coinciden.")
       return
     }
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) {
-      setPasswordError(error.message)
-      return
+
+    setPasswordLoading(true)
+    try {
+      // Verificar contraseña actual re-autenticando
+      const email = user?.email
+      if (!email) {
+        setPasswordError("No se pudo obtener el email del usuario.")
+        return
+      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      })
+      if (signInError) {
+        setPasswordError("La contraseña actual es incorrecta.")
+        return
+      }
+
+      // Actualizar contraseña
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) {
+        setPasswordError(error.message)
+        return
+      }
+
+      setSavedPassword(true)
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setTimeout(() => setSavedPassword(false), 2000)
+    } finally {
+      setPasswordLoading(false)
     }
-    setSavedPassword(true)
-    setCurrentPassword("")
-    setNewPassword("")
-    setConfirmPassword("")
-    setTimeout(() => setSavedPassword(false), 2000)
   }
 
   const initials = localName
@@ -100,7 +124,7 @@ export function ProfilePage() {
             </Avatar>
             <h1 className="text-2xl font-bold text-foreground">Mi Perfil</h1>
             <p className="text-sm text-muted-foreground text-center">
-              Administra tu nombre y contrasena
+              Administrá tu nombre y contraseña
             </p>
           </div>
 
@@ -145,19 +169,19 @@ export function ProfilePage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Lock className="w-4 h-4 text-muted-foreground" />
-              Cambiar contrasena
+              Cambiar contraseña
             </div>
 
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="currentPw" className="text-xs text-muted-foreground">
-                  Contrasena actual
+                  Contraseña actual
                 </Label>
                 <div className="relative">
                   <Input
                     id="currentPw"
                     type={showCurrent ? "text" : "password"}
-                    placeholder="********"
+                    placeholder="Tu contraseña actual"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11"
@@ -175,13 +199,13 @@ export function ProfilePage() {
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="newPw" className="text-xs text-muted-foreground">
-                  Nueva contrasena
+                  Nueva contraseña
                 </Label>
                 <div className="relative">
                   <Input
                     id="newPw"
                     type={showNew ? "text" : "password"}
-                    placeholder="Min. 6 caracteres"
+                    placeholder="Mín. 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11"
@@ -199,13 +223,13 @@ export function ProfilePage() {
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="confirmPw" className="text-xs text-muted-foreground">
-                  Confirmar nueva contrasena
+                  Confirmá la nueva contraseña
                 </Label>
                 <div className="relative">
                   <Input
                     id="confirmPw"
                     type={showConfirm ? "text" : "password"}
-                    placeholder="Repeti la nueva contrasena"
+                    placeholder="Repetí la nueva contraseña"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11"
@@ -236,14 +260,16 @@ export function ProfilePage() {
               <Button
                 className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-10 font-semibold rounded-xl cursor-pointer mt-1"
                 onClick={handleSavePassword}
-                disabled={!currentPassword || !newPassword || !confirmPassword}
+                disabled={!currentPassword || !newPassword || !confirmPassword || passwordLoading}
               >
                 {savedPassword ? (
                   <span className="flex items-center gap-2">
-                    <Check className="w-4 h-4" /> Contrasena actualizada
+                    <Check className="w-4 h-4" /> Contraseña actualizada
                   </span>
+                ) : passwordLoading ? (
+                  "Verificando..."
                 ) : (
-                  "Cambiar contrasena"
+                  "Cambiar contraseña"
                 )}
               </Button>
             </div>

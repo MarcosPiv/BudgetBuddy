@@ -251,7 +251,8 @@ export function DashboardPage() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch {
-      // mic denied
+      setAiError("No se pudo acceder al micrófono. Habilitá el permiso en tu navegador.")
+      setTimeout(() => setAiError(null), 5000)
     }
   }
 
@@ -391,6 +392,9 @@ export function DashboardPage() {
         txRate: curr === "USD" ? appliedRate : undefined,
         exchangeRateType: rateType,
         observation: obs,
+      }, (msg) => {
+        setAiError(msg)
+        setTimeout(() => setAiError(null), 6000)
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al procesar."
@@ -624,6 +628,8 @@ export function DashboardPage() {
             transition={{ delay: 0.05 }}
           >
             {/* Horizontal scrollable chips — no scrollbar */}
+            <div className="relative">
+            <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 lg:hidden" />
             <div className="flex gap-2 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {(["week", "month", "year"] as TimeFilter[]).map((f) => (
                 <button
@@ -654,6 +660,7 @@ export function DashboardPage() {
               >
                 {timeFilter === "custom" ? filterLabels.custom : "Personalizado"}
               </button>
+            </div>
             </div>
 
             {/* Inline calendar for custom range */}

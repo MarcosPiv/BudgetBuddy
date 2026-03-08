@@ -58,8 +58,8 @@ interface AppState {
   setView: (view: View) => void
   // Transactions
   transactions: Transaction[]
-  addTransaction: (t: Omit<Transaction, "id">) => void
-  deleteTransaction: (id: string) => void
+  addTransaction: (t: Omit<Transaction, "id">, onError?: (msg: string) => void) => void
+  deleteTransaction: (id: string, onError?: (msg: string) => void) => void
   // UI
   isProcessing: boolean
   setIsProcessing: (v: boolean) => void
@@ -234,7 +234,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Transaction actions ──────────────────────────────────────────────────────
-  const addTransaction = (t: Omit<Transaction, "id">) => {
+  const addTransaction = (t: Omit<Transaction, "id">, onError?: (msg: string) => void) => {
     if (!user) return
 
     // Optimistic update
@@ -263,6 +263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (error) {
           // Rollback on failure
           setTransactions((prev) => prev.filter((tx) => tx.id !== tempId))
+          onError?.("No se pudo guardar la transacción. Verificá tu conexión.")
           return
         }
         if (data) {
@@ -273,9 +274,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
   }
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = (id: string, onError?: (msg: string) => void) => {
+    const backup = transactions.find((tx) => tx.id === id)
     setTransactions((prev) => prev.filter((tx) => tx.id !== id))
-    supabase.from("transactions").delete().eq("id", id)
+    supabase
+      .from("transactions")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error && backup) {
+          // Rollback: restore the deleted transaction
+          setTransactions((prev) => [backup, ...prev])
+          onError?.("No se pudo eliminar la transacción. Verificá tu conexión.")
+        }
+      })
   }
 
   // ── Profile sync ─────────────────────────────────────────────────────────────
