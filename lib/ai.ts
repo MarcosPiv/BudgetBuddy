@@ -8,6 +8,11 @@ export interface ParsedTransaction {
   icon: string
 }
 
+export interface ChatTurn {
+  role: "user" | "assistant"
+  text: string
+}
+
 const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft"]
 const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
 
@@ -38,6 +43,20 @@ Reglas:
   * Si no entra en ninguna → "General", "ShoppingCart"
 - Para ingresos preferir icon "ArrowDownLeft"
 - Si dicen "hola", preguntas o texto sin transacción → {"type":"unknown"}`
+
+function buildChatSystemPrompt(context: string): string {
+  return `Sos BudgetBuddy AI, un asistente financiero personal para Argentina. Hablás en español rioplatense informal (vos, che).
+
+Datos financieros actuales del usuario:
+${context}
+
+Instrucciones:
+- Respondé preguntas sobre finanzas, gastos, ingresos y presupuesto basándote en los datos del contexto
+- Dás consejos financieros prácticos y concretos adaptados a Argentina
+- Sé conciso y claro (máximo 3-4 oraciones por respuesta)
+- Si el usuario pregunta algo sin relación a finanzas, redirigilo amablemente
+- No inventés datos que no estén en el contexto`
+}
 
 function buildUserMessage(input: string): string {
   return `Texto: "${input}"`
@@ -74,7 +93,7 @@ function translateError(msg: string): string {
     return "API key inválida. Verificá tu clave en Ajustes."
   if (msg.includes("rate limit") || msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED"))
     return "Límite de requests alcanzado. Esperá unos segundos."
-  if (msg.includes("model") || msg.includes("MODEL_NOT_FOUND"))
+  if (msg.includes("MODEL_NOT_FOUND") || msg.includes("model not found") || msg.includes("not found for API"))
     return "Modelo no disponible. Verificá tu plan de API."
   if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed to fetch"))
     return "Error de conexión. Revisá tu internet."
@@ -110,6 +129,34 @@ async function callClaude(apiKey: string, input: string): Promise<ParsedTransact
   return extractAndValidate(text)
 }
 
+async function callClaudeChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-allow-browser": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 300,
+      system: buildChatSystemPrompt(context),
+      messages: history.map(m => ({ role: m.role, content: m.text })),
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(translateError(err?.error?.message || `Error ${res.status}`))
+  }
+
+  const data = await res.json()
+  const text = data.content?.[0]?.text
+  if (!text) throw new Error("Claude no devolvió respuesta.")
+  return text.trim()
+}
+
 // ── OpenAI ────────────────────────────────────────────────────────────────────
 async function callOpenAI(apiKey: string, input: string): Promise<ParsedTransaction> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -141,10 +188,39 @@ async function callOpenAI(apiKey: string, input: string): Promise<ParsedTransact
   return extractAndValidate(text)
 }
 
+async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      max_tokens: 300,
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: buildChatSystemPrompt(context) },
+        ...history.map(m => ({ role: m.role, content: m.text })),
+      ],
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(translateError(err?.error?.message || `Error ${res.status}`))
+  }
+
+  const data = await res.json()
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error("OpenAI no devolvió respuesta.")
+  return text.trim()
+}
+
 // ── Gemini (Google) ───────────────────────────────────────────────────────────
 async function callGemini(apiKey: string, input: string): Promise<ParsedTransaction> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -171,7 +247,38 @@ async function callGemini(apiKey: string, input: string): Promise<ParsedTransact
   return extractAndValidate(text)
 }
 
-// ── Public entry point ────────────────────────────────────────────────────────
+async function callGeminiChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: buildChatSystemPrompt(context) }] },
+        contents: history.map(m => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.text }],
+        })),
+        generationConfig: {
+          maxOutputTokens: 300,
+          temperature: 0.7,
+        },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(translateError(err?.error?.message || `Error ${res.status}`))
+  }
+
+  const data = await res.json()
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!text) throw new Error("Gemini no devolvió respuesta.")
+  return text.trim()
+}
+
+// ── Public entry points ───────────────────────────────────────────────────────
 export async function callAI(
   provider: AIProvider,
   apiKey: string,
@@ -181,6 +288,22 @@ export async function callAI(
     if (provider === "claude") return await callClaude(apiKey, input)
     if (provider === "openai") return await callOpenAI(apiKey, input)
     return await callGemini(apiKey, input)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error desconocido."
+    throw new Error(translateError(msg))
+  }
+}
+
+export async function callAIChat(
+  provider: AIProvider,
+  apiKey: string,
+  context: string,
+  history: ChatTurn[]
+): Promise<string> {
+  try {
+    if (provider === "claude") return await callClaudeChat(apiKey, context, history)
+    if (provider === "openai") return await callOpenAIChat(apiKey, context, history)
+    return await callGeminiChat(apiKey, context, history)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))

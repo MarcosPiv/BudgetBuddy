@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
-import { callAI } from "@/lib/ai"
+import { callAI, callAIChat, type ChatTurn } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
 import { ExchangeWidget } from "@/components/ui/exchange-widget"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
@@ -123,6 +123,7 @@ export function DashboardPage() {
     },
   ])
   const [chatInput, setChatInput] = useState("")
+  const [isChatProcessing, setIsChatProcessing] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -400,24 +401,66 @@ export function DashboardPage() {
     }
   }
 
-  const handleChatSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!chatInput.trim()) return
-    const userMsg = chatInput
-    setChatInput("")
-    setChatMessages((prev) => [...prev, { role: "user", text: userMsg }])
-    setTimeout(() => {
-      const expenses = filteredTransactions.filter((t) => t.type === "expense")
-      const topCategory = expenses.reduce<Record<string, number>>((acc, t) => {
+  const buildFinancialContext = (): string => {
+    const expensesByCategory = filteredTransactions
+      .filter(t => t.type === "expense")
+      .reduce<Record<string, number>>((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + toArs(t)
         return acc
       }, {})
-      const top = Object.entries(topCategory).sort((a, b) => b[1] - a[1])[0]
-      const summaryText = isExpensesOnly
-        ? `${filterLabels[timeFilter]}: llevas ${formatCurrency(totalExpenses)} gastados. Te queda ${formatCurrency(balance)}.`
-        : `${filterLabels[timeFilter]}: ingresos ${formatCurrency(totalIncome)}, gastos ${formatCurrency(totalExpenses)}. Balance: ${formatCurrency(balance)}. Top: "${top?.[0] || "General"}".`
-      setChatMessages((prev) => [...prev, { role: "bot", text: summaryText }])
-    }, 1200)
+    const topCategories = Object.entries(expensesByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([cat, amt]) => `${cat}: ${formatCurrency(amt)}`)
+      .join(", ")
+    const lines = [
+      `Período: ${filterLabels[timeFilter]}`,
+      `Ingresos totales: ${formatCurrency(totalIncome)}`,
+      `Gastos totales: ${formatCurrency(totalExpenses)}`,
+      `Balance: ${formatCurrency(balance)}`,
+      isExpensesOnly && monthlyBudget ? `Presupuesto mensual: ${formatCurrency(monthlyBudget)}` : null,
+      topCategories ? `Top categorías de gastos: ${topCategories}` : null,
+      `Transacciones en el período: ${filteredTransactions.length}`,
+    ]
+    return lines.filter(Boolean).join("\n")
+  }
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!chatInput.trim() || isChatProcessing) return
+
+    const userMsg = chatInput.trim()
+    setChatInput("")
+
+    // Add user message and capture current history before state update
+    const prevMessages = chatMessages
+    setChatMessages(prev => [...prev, { role: "user", text: userMsg }])
+
+    if (!apiKey.trim()) {
+      setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para usar el asistente." }])
+      return
+    }
+
+    setIsChatProcessing(true)
+
+    // Build history: skip the initial greeting, convert roles
+    const history: ChatTurn[] = [
+      ...prevMessages.slice(1).map(m => ({
+        role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+        text: m.text,
+      })),
+      { role: "user", text: userMsg },
+    ]
+
+    try {
+      const reply = await callAIChat(aiProvider, apiKey, buildFinancialContext(), history)
+      setChatMessages(prev => [...prev, { role: "bot", text: reply }])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al conectar."
+      setChatMessages(prev => [...prev, { role: "bot", text: msg }])
+    } finally {
+      setIsChatProcessing(false)
+    }
   }
 
   const handleApplyCustomRange = () => {
@@ -860,6 +903,23 @@ export function DashboardPage() {
                     </div>
                   </motion.div>
                 ))}
+                {isChatProcessing && (
+                  <motion.div
+                    className="flex gap-2.5"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="flex items-center justify-center w-6 h-6 rounded-lg shrink-0 mt-0.5 bg-accent/15">
+                      <Bot className="w-3 h-3 text-accent" />
+                    </div>
+                    <div className="bg-secondary text-foreground rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm flex gap-1 items-center">
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </motion.div>
+                )}
                 <div ref={chatEndRef} />
               </div>
 
@@ -873,12 +933,14 @@ export function DashboardPage() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     placeholder="Pregunta sobre tus finanzas..."
+                    disabled={isChatProcessing}
                     className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0 text-sm"
                   />
                   <Button
                     type="submit"
                     size="icon"
-                    className="bg-accent text-accent-foreground hover:bg-accent/90 shrink-0 rounded-lg h-8 w-8 cursor-pointer"
+                    disabled={isChatProcessing}
+                    className="bg-accent text-accent-foreground hover:bg-accent/90 shrink-0 rounded-lg h-8 w-8 cursor-pointer disabled:opacity-50"
                     aria-label="Enviar"
                   >
                     <Send className="w-3.5 h-3.5" />
