@@ -1,7 +1,8 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Sparkles, Mic, Brain, BarChart3, ArrowRight, Wallet } from "lucide-react"
+import { Sparkles, Mic, Brain, BarChart3, ArrowRight, Wallet, Download, Smartphone } from "lucide-react"
 import { useApp } from "@/lib/app-context"
 
 const fadeInUp = {
@@ -11,6 +12,11 @@ const fadeInUp = {
     y: 0,
     transition: { delay: i * 0.15, duration: 0.6, ease: [0.22, 1, 0.36, 1] },
   }),
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
 function ChatIllustration() {
@@ -70,27 +76,67 @@ function ChartIllustration() {
 
 export function LandingPage() {
   const { setView } = useApp()
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isInstalled, setIsInstalled] = useState(false)
+
+  useEffect(() => {
+    // Check if already installed as PWA
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setIsInstalled(true)
+    }
+
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setInstallPrompt(e as BeforeInstallPromptEvent)
+    }
+    window.addEventListener("beforeinstallprompt", handler)
+    return () => window.removeEventListener("beforeinstallprompt", handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === "accepted") {
+      setInstallPrompt(null)
+      setIsInstalled(true)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Nav */}
-      <header className="flex items-center justify-between px-6 py-4 lg:px-12">
+      <header className="flex items-center justify-between px-5 py-4 lg:px-12">
         <div className="flex items-center gap-2">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary shrink-0">
             <Wallet className="w-5 h-5 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold text-foreground tracking-tight">BudgetBuddy</span>
         </div>
-        <button
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          onClick={() => setView("auth")}
-        >
-          Iniciar sesion
-        </button>
+        <div className="flex items-center gap-3">
+          {installPrompt && !isInstalled && (
+            <motion.button
+              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 rounded-full px-3 py-1.5 hover:text-foreground hover:border-border transition-colors cursor-pointer"
+              onClick={handleInstall}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.8 }}
+            >
+              <Download className="w-3 h-3" />
+              Instalar
+            </motion.button>
+          )}
+          <button
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            onClick={() => setView("auth")}
+          >
+            Iniciar sesion
+          </button>
+        </div>
       </header>
 
       {/* Hero */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 text-center py-16 min-h-[60vh]">
+      <main className="flex-1 flex flex-col items-center justify-center px-5 text-center py-12 min-h-[55vh]">
         <motion.div
           className="flex items-center gap-2 mb-6 rounded-full border border-border bg-secondary/50 px-4 py-1.5"
           initial={{ opacity: 0, scale: 0.9 }}
@@ -118,7 +164,7 @@ export function LandingPage() {
         </motion.h1>
 
         <motion.p
-          className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl text-pretty leading-relaxed"
+          className="mt-5 text-base md:text-xl text-muted-foreground max-w-2xl text-pretty leading-relaxed px-2"
           variants={fadeInUp}
           initial="hidden"
           animate="visible"
@@ -129,14 +175,14 @@ export function LandingPage() {
         </motion.p>
 
         <motion.div
-          className="mt-10"
+          className="mt-8 flex flex-col sm:flex-row items-center gap-3"
           variants={fadeInUp}
           initial="hidden"
           animate="visible"
           custom={2}
         >
           <button
-            className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-semibold text-base px-10 py-4 rounded-full cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:scale-[1.03]"
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-semibold text-base px-10 py-4 rounded-full cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:scale-[1.03] w-full sm:w-auto justify-center"
             style={{ boxShadow: "0 0 0 0 oklch(0.72 0.19 160 / 0)" }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.boxShadow = "0 0 35px oklch(0.72 0.19 160 / 0.55)"
@@ -149,13 +195,39 @@ export function LandingPage() {
             Empezar gratis
             <ArrowRight className="w-5 h-5" />
           </button>
+
+          {/* Mobile install button */}
+          {installPrompt && !isInstalled && (
+            <motion.button
+              className="sm:hidden inline-flex items-center gap-2 border border-border/60 text-muted-foreground font-medium text-sm px-6 py-3.5 rounded-full cursor-pointer transition-colors hover:text-foreground hover:border-border w-full justify-center"
+              onClick={handleInstall}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <Smartphone className="w-4 h-4" />
+              Instalar como app
+            </motion.button>
+          )}
         </motion.div>
+
+        {/* iOS install hint */}
+        {!installPrompt && !isInstalled && (
+          <motion.p
+            className="mt-4 text-xs text-muted-foreground/50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1 }}
+          >
+            En iPhone: Compartir → Agregar a pantalla de inicio
+          </motion.p>
+        )}
       </main>
 
       {/* How it works */}
-      <section className="px-6 pb-20 lg:px-12">
+      <section className="px-5 pb-16 lg:px-12">
         <motion.p
-          className="text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-8"
+          className="text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-6"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
@@ -163,10 +235,10 @@ export function LandingPage() {
           Como funciona
         </motion.p>
 
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Step 1 — wide (2/3) */}
           <motion.div
-            className="md:col-span-2 flex flex-col rounded-2xl border border-border bg-card p-6 gap-4 cursor-default"
+            className="md:col-span-2 flex flex-col rounded-2xl border border-border bg-card p-5 gap-4 cursor-default"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -190,7 +262,7 @@ export function LandingPage() {
 
           {/* Step 2 — narrow (1/3) */}
           <motion.div
-            className="flex flex-col rounded-2xl border border-border bg-card p-6 gap-4 cursor-default"
+            className="flex flex-col rounded-2xl border border-border bg-card p-5 gap-4 cursor-default"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -214,7 +286,7 @@ export function LandingPage() {
 
           {/* Step 3 — full width */}
           <motion.div
-            className="md:col-span-3 flex flex-col sm:flex-row gap-6 rounded-2xl border border-border bg-card p-6 cursor-default"
+            className="md:col-span-3 flex flex-col sm:flex-row gap-6 rounded-2xl border border-border bg-card p-5 cursor-default"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}

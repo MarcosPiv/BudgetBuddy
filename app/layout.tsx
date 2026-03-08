@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
+import { PwaRegister } from '@/components/pwa-register'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -9,17 +10,24 @@ export const metadata: Metadata = {
   title: 'BudgetBuddy - Finanzas con IA',
   description: 'Rastreador de gastos con IA para la economía argentina. Registrá gastos por texto, foto o audio.',
   metadataBase: new URL('https://finanzas-budget-buddy.vercel.app'),
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'BudgetBuddy',
+  },
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
-    apple: '/apple-icon.png',
+    apple: '/icon.svg',
   },
 }
 
 export const viewport: Viewport = {
   themeColor: '#0f172a',
   userScalable: false,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -30,6 +38,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+        <PwaRegister />
         {children}
       </body>
     </html>
