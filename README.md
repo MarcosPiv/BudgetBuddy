@@ -10,6 +10,7 @@ Rastreador de gastos potenciado con IA, diseñado para la economía argentina. R
 - **Framer Motion** para animaciones
 - **DolarAPI** para cotizaciones en tiempo real
 - **Lucide React** para íconos
+- **PWA** — instalable en Android e iOS sin app store
 
 ## Funcionalidades
 
@@ -19,12 +20,13 @@ Rastreador de gastos potenciado con IA, diseñado para la economía argentina. R
 - Soporte multi-moneda ARS / USD con tipo de cambio por transacción
 - Tipos de dólar por gasto: Blue, Tarjeta, Oficial, MEP o Manual
 - Widget de cotizaciones en vivo (DolarAPI) en el dashboard
-- Filtros por semana, mes, año o rango personalizado con selector de fechas
+- Filtros por semana, mes, año o rango personalizado con atajos rápidos
 - Modo "Solo gastos" con presupuesto mensual y barra de progreso
 - Asistente de IA configurable: Claude, OpenAI o Gemini
+- Chat financiero con IA usando datos reales del período activo
 - Persistencia en la nube — los datos no se pierden al recargar
-- Chat con asistente financiero
 - Dark mode
+- PWA instalable: botón de instalación en landing (Android) e instrucciones para iOS
 
 ## Instalación
 
@@ -61,17 +63,25 @@ app/
   page.tsx                  # Raíz, AppProvider, router de vistas SPA
   reset-password/page.tsx   # Página de recuperación de contraseña
   globals.css               # Tokens de tema Tailwind v4 (oklch)
-components/                 # Páginas y componentes UI
-  dashboard-page.tsx        # Vista principal (~1200 líneas)
+  layout.tsx                # Meta PWA, manifest, service worker register
+components/
+  dashboard-page.tsx        # Vista principal
   settings-page.tsx         # Configuración AI, tipo de cambio, perfil
   auth-page.tsx             # Login, registro, recuperación de contraseña
   profile-page.tsx          # Nombre y contraseña del usuario
+  pwa-register.tsx          # Registro del service worker
   ui/                       # Componentes shadcn/ui + exchange-widget
 hooks/
   use-exchange-rate.ts      # Hook para DolarAPI (Blue, Oficial, Tarjeta, MEP)
 lib/
   app-context.tsx           # React Context global + tipos + loaders Supabase
+  ai.ts                     # Integración Claude / OpenAI / Gemini
   supabase.ts               # Cliente Supabase
+public/
+  manifest.json             # Web App Manifest (PWA)
+  sw.js                     # Service worker (cache shell + assets estáticos)
+  icon.svg                  # Ícono principal
+  icon-maskable.svg         # Ícono adaptive para Android
 ```
 
 ## Producción

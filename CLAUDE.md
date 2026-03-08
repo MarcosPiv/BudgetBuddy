@@ -132,15 +132,17 @@ Three LLM providers are supported. The active provider is selected in Settings:
 ```
 app/
   page.tsx                    # Root, AppProvider wrapper, SPA view router
-  globals.css                 # Tailwind v4 theme tokens (oklch)
+  layout.tsx                  # PWA meta, manifest link, PwaRegister
+  globals.css                 # Tailwind v4 theme tokens (oklch) + mobile globals
   reset-password/
     page.tsx                  # Standalone page for password recovery flow
 components/
   dashboard-page.tsx          # Main view: header, filters, summary, tx list, magic bar, chat
   settings-page.tsx           # AI provider selector, exchange rate config, profile mode
   auth-page.tsx               # Login, register, forgot password flows
-  landing-page.tsx
+  landing-page.tsx            # Landing + PWA install button
   profile-page.tsx            # Name change, password change
+  pwa-register.tsx            # Service worker registration (client component)
   ui/
     exchange-widget.tsx       # Collapsible live rate panel for dashboard
     ... (shadcn components)
@@ -150,9 +152,41 @@ hooks/
   use-toast.ts
 lib/
   app-context.tsx             # Global React Context, all types, Supabase data loaders
+  ai.ts                       # callAI() + callAIChat() — Claude / OpenAI / Gemini
   supabase.ts                 # Supabase client (reads from env vars)
   utils.ts
+public/
+  manifest.json               # Web App Manifest
+  sw.js                       # Service worker
+  icon.svg                    # App icon
+  icon-maskable.svg           # Maskable icon for Android adaptive icons
 ```
+
+### PWA
+
+The app is installable as a Progressive Web App:
+- `public/manifest.json` — name, colors, orientation, SVG icons (`icon.svg` + `icon-maskable.svg`)
+- `public/sw.js` — service worker: caches app shell + `_next/static` assets; never caches external API calls (Supabase, Anthropic, etc.); network-first for navigation
+- `components/pwa-register.tsx` — registers the SW via `useEffect` on mount; rendered in `app/layout.tsx`
+- `app/layout.tsx` — `viewport.viewportFit: 'cover'` (safe-area for iPhone notch), `metadata.manifest`, `appleWebApp` meta
+- `components/landing-page.tsx` — listens for `beforeinstallprompt` (Android/Chrome) and shows an install button; iOS users see a hint "Compartir → Agregar a pantalla de inicio"
+
+### Logout (signOut)
+
+`signOut()` in `app-context.tsx` is **synchronous and optimistic**:
+1. Immediately clears all local state (`user`, `transactions`, keys) and navigates to `"landing"` — UI responds instantly
+2. Calls `supabase.auth.signOut()` fire-and-forget in the background
+3. `onAuthStateChange` fires `SIGNED_OUT` and runs cleanup (now a no-op since state is already cleared)
+
+This avoids UI freeze on mobile/PWA when the network is slow.
+
+### Custom Range Calendar
+
+The inline calendar (shown when clicking "Personalizado" in the filter bar) has:
+- **Quick presets** scrollable chip row: Hoy, Ayer, 7 días, 30 días, Este mes, Mes ant. — clicking any preset applies immediately and closes the calendar
+- **Selected range preview**: shows `fromDate → toDate` and number of days
+- **Calendar picker** for arbitrary ranges + "Aplicar rango" button
+- `applyRange(from, to)` helper ensures `to` is always end-of-day (23:59:59.999)
 
 ### Key Config Notes
 

@@ -50,7 +50,7 @@ interface AppState {
   // Auth
   user: User | null
   loadingAuth: boolean
-  signOut: () => Promise<void>
+  signOut: () => void
   isPasswordRecovery: boolean
   setIsPasswordRecovery: (v: boolean) => void
   // Navigation
@@ -220,9 +220,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
-  const signOut = async () => {
-    await supabase.auth.signOut()
-    // State cleanup handled by onAuthStateChange
+  const signOut = () => {
+    // Optimistic: clear state and navigate immediately so the UI never freezes
+    setUser(null)
+    setTransactions([])
+    setUserName("Usuario")
+    setApiKeyClaude("")
+    setApiKeyOpenAI("")
+    setApiKeyGemini("")
+    setView("landing")
+    // Fire-and-forget — onAuthStateChange will handle any remaining cleanup
+    supabase.auth.signOut()
   }
 
   // ── Transaction actions ──────────────────────────────────────────────────────

@@ -463,14 +463,65 @@ export function DashboardPage() {
     }
   }
 
-  const handleApplyCustomRange = () => {
-    if (!calendarRange?.from) return
-    const to = calendarRange.to ? new Date(calendarRange.to) : new Date(calendarRange.from)
-    to.setHours(23, 59, 59)
-    setCustomRange({ from: calendarRange.from, to })
+  const applyRange = (from: Date, to: Date) => {
+    const end = new Date(to)
+    end.setHours(23, 59, 59, 999)
+    setCustomRange({ from, to: end })
+    setCalendarRange({ from, to: end })
     setTimeFilter("custom")
     setShowCalendar(false)
   }
+
+  const handleApplyCustomRange = () => {
+    if (!calendarRange?.from) return
+    const to = calendarRange.to ?? calendarRange.from
+    applyRange(calendarRange.from, to)
+  }
+
+  const calendarPresets: { label: string; getRange: () => { from: Date; to: Date } }[] = [
+    {
+      label: "Hoy",
+      getRange: () => { const d = new Date(); return { from: d, to: d } },
+    },
+    {
+      label: "Ayer",
+      getRange: () => {
+        const d = new Date(); d.setDate(d.getDate() - 1); return { from: d, to: d }
+      },
+    },
+    {
+      label: "7 días",
+      getRange: () => {
+        const to = new Date()
+        const from = new Date(); from.setDate(from.getDate() - 6)
+        return { from, to }
+      },
+    },
+    {
+      label: "30 días",
+      getRange: () => {
+        const to = new Date()
+        const from = new Date(); from.setDate(from.getDate() - 29)
+        return { from, to }
+      },
+    },
+    {
+      label: "Este mes",
+      getRange: () => {
+        const n = new Date()
+        return { from: new Date(n.getFullYear(), n.getMonth(), 1), to: n }
+      },
+    },
+    {
+      label: "Mes ant.",
+      getRange: () => {
+        const n = new Date()
+        const from = new Date(n.getFullYear(), n.getMonth() - 1, 1)
+        const to = new Date(n.getFullYear(), n.getMonth(), 0)
+        return { from, to }
+      },
+    },
+  ]
 
   const initials =
     userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "U"
@@ -613,8 +664,48 @@ export function DashboardPage() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                 >
+                  {/* Quick presets */}
+                  <div className="flex gap-1.5 overflow-x-auto px-3 pt-3 pb-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {calendarPresets.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          const { from, to } = preset.getRange()
+                          applyRange(from, to)
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium bg-secondary hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border/40"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-border/40" />
+
                   <div className="p-3">
+                    {/* Selected range preview */}
+                    <div className="flex items-center justify-between mb-2 px-1 min-h-[20px]">
+                      {calendarRange?.from ? (
+                        <>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {formatDateShort(calendarRange.from)}
+                            {" → "}
+                            {calendarRange.to ? formatDateShort(calendarRange.to) : "..."}
+                          </span>
+                          {calendarRange.to && (
+                            <span className="text-xs text-muted-foreground">
+                              {Math.max(1, Math.round((calendarRange.to.getTime() - calendarRange.from.getTime()) / 86400000) + 1)} días
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50">Seleccioná una fecha de inicio</span>
+                      )}
+                    </div>
+
                     <Calendar
                       mode="range"
                       selected={calendarRange}
