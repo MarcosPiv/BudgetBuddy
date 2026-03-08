@@ -4,29 +4,42 @@ Rastreador de gastos potenciado con IA, diseñado para la economía argentina. R
 
 ## Stack
 
-- **Next.js 15** (App Router)
+- **Next.js 16** (App Router)
+- **Supabase** — auth, base de datos PostgreSQL, Row Level Security
 - **Tailwind CSS v4** + **shadcn/ui** (new-york)
 - **Framer Motion** para animaciones
 - **DolarAPI** para cotizaciones en tiempo real
 - **Lucide React** para íconos
 
-## Funcionalidades actuales
+## Funcionalidades
 
+- Autenticación con email y contraseña (Supabase Auth)
+- Recuperación de contraseña por email
 - Registro de gastos e ingresos por texto, imagen o audio
-- Clasificación automática por categorías con IA (simulada)
 - Soporte multi-moneda ARS / USD con tipo de cambio por transacción
 - Tipos de dólar por gasto: Blue, Tarjeta, Oficial, MEP o Manual
 - Widget de cotizaciones en vivo (DolarAPI) en el dashboard
-- Filtros por semana, mes, año o rango personalizado
+- Filtros por semana, mes, año o rango personalizado con selector de fechas
 - Modo "Solo gastos" con presupuesto mensual y barra de progreso
+- Asistente de IA configurable: Claude, OpenAI o Gemini
+- Persistencia en la nube — los datos no se pierden al recargar
 - Chat con asistente financiero
-- Captura de tickets con cámara
 - Dark mode
 
 ## Instalación
 
 ```bash
 npm install
+```
+
+Configurar variables de entorno en `.env.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=tu_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
+```
+
+```bash
 npm run dev
 ```
 
@@ -44,21 +57,30 @@ npm run lint     # ESLint
 ## Estructura
 
 ```
-app/                    # Next.js App Router
-components/             # Páginas y componentes UI
-  ui/                   # 57 componentes shadcn/ui + exchange-widget
-hooks/                  # use-exchange-rate, use-mobile, use-toast
-lib/                    # app-context (estado global), utils
+app/
+  page.tsx                  # Raíz, AppProvider, router de vistas SPA
+  reset-password/page.tsx   # Página de recuperación de contraseña
+  globals.css               # Tokens de tema Tailwind v4 (oklch)
+components/                 # Páginas y componentes UI
+  dashboard-page.tsx        # Vista principal (~1200 líneas)
+  settings-page.tsx         # Configuración AI, tipo de cambio, perfil
+  auth-page.tsx             # Login, registro, recuperación de contraseña
+  profile-page.tsx          # Nombre y contraseña del usuario
+  ui/                       # Componentes shadcn/ui + exchange-widget
+hooks/
+  use-exchange-rate.ts      # Hook para DolarAPI (Blue, Oficial, Tarjeta, MEP)
+lib/
+  app-context.tsx           # React Context global + tipos + loaders Supabase
+  supabase.ts               # Cliente Supabase
 ```
 
-## Próximo paso: Backend con Supabase
+## Producción
 
-La siguiente fase migra la app de SPA estática a una app con backend real:
+Desplegado en Vercel: [finanzas-budget-buddy.vercel.app](https://finanzas-budget-buddy.vercel.app)
 
-- **Auth** — Supabase Auth (email/password, magic link)
-- **Base de datos** — tablas `transactions` y `profiles` con Row Level Security
-- **Persistencia** — los datos dejan de perderse al recargar
-- **Multi-dispositivo** — el historial viaja con el usuario
+Configuración requerida en Supabase Dashboard:
+- **Site URL:** `https://finanzas-budget-buddy.vercel.app`
+- **Redirect URLs:** `https://finanzas-budget-buddy.vercel.app/**`
 
 ---
 

@@ -182,16 +182,18 @@ export function DashboardPage() {
   const toArs = (tx: { amount: number; currency: "ARS" | "USD"; txRate?: number }) =>
     tx.currency === "USD" ? tx.amount * (tx.txRate ?? usdRate) : tx.amount
 
-  const totalExpenses = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((a, b) => a + toArs(b), 0)
-  const totalIncome = filteredTransactions
-    .filter((t) => t.type === "income")
-    .reduce((a, b) => a + toArs(b), 0)
+  const totalExpenses = useMemo(
+    () => filteredTransactions.filter((t) => t.type === "expense").reduce((a, b) => a + toArs(b), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredTransactions, usdRate]
+  )
+  const totalIncome = useMemo(
+    () => filteredTransactions.filter((t) => t.type === "income").reduce((a, b) => a + toArs(b), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredTransactions, usdRate]
+  )
 
-  const balance = isExpensesOnly
-    ? monthlyBudget - totalExpenses
-    : totalIncome - totalExpenses
+  const balance = isExpensesOnly ? monthlyBudget - totalExpenses : totalIncome - totalExpenses
   const spentPercent = isExpensesOnly
     ? Math.min((totalExpenses / monthlyBudget) * 100, 100)
     : 0
@@ -199,23 +201,17 @@ export function DashboardPage() {
   const formatCurrency = (n: number) =>
     `$ ${Math.abs(n).toLocaleString("es-AR")} ARS`
 
-  const filterLabels: Record<TimeFilter, string> = {
+  const filterLabels: Record<TimeFilter, string> = useMemo(() => ({
     week: "Esta semana",
     month: "Este mes",
     year: "Este año",
     custom: `${formatDateShort(customRange.from)} — ${formatDateShort(customRange.to)}`,
-  }
+  }), [customRange.from, customRange.to])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [chatMessages])
 
-  useEffect(() => {
-    return () => {
-      attachments.forEach((a) => URL.revokeObjectURL(a.url))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files

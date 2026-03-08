@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from "react"
 import { type User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 
@@ -133,10 +133,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
 
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("month")
-  const now = new Date()
-  const [customRange, setCustomRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to: now,
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date }>(() => {
+    const now = new Date()
+    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now }
   })
 
   // ── Data loaders ────────────────────────────────────────────────────────────
@@ -204,6 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (u) {
         Promise.all([loadProfile(u.id), loadTransactions(u.id)]).then(() => {
           setView("dashboard")
+          setLoadingAuth(false)
         })
       } else {
         setTransactions([])
@@ -298,47 +298,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  // Memoize context value to prevent all consumers from re-rendering on unrelated state changes
+  const contextValue = useMemo(() => ({
+    user,
+    loadingAuth,
+    signOut,
+    isPasswordRecovery,
+    setIsPasswordRecovery,
+    currentView,
+    setView,
+    transactions,
+    addTransaction,
+    deleteTransaction,
+    isProcessing,
+    setIsProcessing,
+    aiProvider,
+    setAiProvider,
+    apiKeyClaude,
+    setApiKeyClaude,
+    apiKeyOpenAI,
+    setApiKeyOpenAI,
+    apiKeyGemini,
+    setApiKeyGemini,
+    apiKey,
+    userName,
+    setUserName,
+    monthlyBudget,
+    setMonthlyBudget,
+    profileMode,
+    setProfileMode,
+    usdRate,
+    setUsdRate,
+    exchangeRateMode,
+    setExchangeRateMode,
+    saveProfile,
+    timeFilter,
+    setTimeFilter,
+    customRange,
+    setCustomRange,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [user, loadingAuth, isPasswordRecovery, currentView, transactions, isProcessing,
+       aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
+       monthlyBudget, profileMode, usdRate, exchangeRateMode, timeFilter, customRange])
+
   return (
-    <AppContext.Provider
-      value={{
-        user,
-        loadingAuth,
-        signOut,
-        isPasswordRecovery,
-        setIsPasswordRecovery,
-        currentView,
-        setView,
-        transactions,
-        addTransaction,
-        deleteTransaction,
-        isProcessing,
-        setIsProcessing,
-        aiProvider,
-        setAiProvider,
-        apiKeyClaude,
-        setApiKeyClaude,
-        apiKeyOpenAI,
-        setApiKeyOpenAI,
-        apiKeyGemini,
-        setApiKeyGemini,
-        apiKey,
-        userName,
-        setUserName,
-        monthlyBudget,
-        setMonthlyBudget,
-        profileMode,
-        setProfileMode,
-        usdRate,
-        setUsdRate,
-        exchangeRateMode,
-        setExchangeRateMode,
-        saveProfile,
-        timeFilter,
-        setTimeFilter,
-        customRange,
-        setCustomRange,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   )

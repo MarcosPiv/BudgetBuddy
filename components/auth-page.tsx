@@ -109,6 +109,10 @@ export function AuthPage() {
         setError("Ya existe una cuenta con ese email.")
       } else if (msg.includes("Email not confirmed")) {
         setError("Confirmá tu email antes de iniciar sesión.")
+      } else if (msg.includes("email rate limit exceeded") || msg.includes("rate limit")) {
+        setError("Demasiados intentos. Esperá unos minutos antes de volver a intentar.")
+      } else if (msg.includes("over_email_send_rate_limit")) {
+        setError("Límite de emails alcanzado. Intentá de nuevo en unos minutos.")
       } else {
         setError(msg)
       }

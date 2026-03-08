@@ -1,13 +1,25 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { AppProvider, useApp } from "@/lib/app-context"
 import { LandingPage } from "@/components/landing-page"
 import { AuthPage } from "@/components/auth-page"
-import { SettingsPage } from "@/components/settings-page"
-import { DashboardPage } from "@/components/dashboard-page"
-import { ProfilePage } from "@/components/profile-page"
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
+
+// Code-split heavy pages — only load the JS chunk when the view is active
+const DashboardPage = dynamic(
+  () => import("@/components/dashboard-page").then((m) => ({ default: m.DashboardPage })),
+  { ssr: false }
+)
+const SettingsPage = dynamic(
+  () => import("@/components/settings-page").then((m) => ({ default: m.SettingsPage })),
+  { ssr: false }
+)
+const ProfilePage = dynamic(
+  () => import("@/components/profile-page").then((m) => ({ default: m.ProfilePage })),
+  { ssr: false }
+)
 
 function AppRouter() {
   const { currentView, loadingAuth } = useApp()
