@@ -188,6 +188,7 @@ export function DashboardPage() {
     icon: "ShoppingCart",
     date: "",
     currency: "ARS" as "ARS" | "USD",
+    exRateType: "BLUE" as ExchangeRateType,
     txRate: "",
     observation: "",
   })
@@ -543,15 +544,24 @@ export function DashboardPage() {
       icon: tx.icon,
       date: new Date(tx.date).toISOString().split("T")[0],
       currency: tx.currency,
+      exRateType: (tx.exchangeRateType as ExchangeRateType) ?? "BLUE",
       txRate: String(tx.txRate ?? ""),
       observation: tx.observation ?? "",
     })
+  }
+
+  const getEditAppliedRate = (): number => {
+    if (editForm.currency === "ARS") return 1
+    if (editForm.exRateType === "MANUAL") return parseFloat(editForm.txRate) || usdRate
+    const live = liveRates[editForm.exRateType.toLowerCase() as keyof typeof liveRates]
+    return (live as { venta?: number } | null)?.venta ?? usdRate
   }
 
   const handleSaveEdit = () => {
     if (!editingTx) return
     const amount = parseFloat(editForm.amount)
     if (!amount || amount <= 0) return
+    const appliedRate = getEditAppliedRate()
     updateTransaction(editingTx.id, {
       description: editForm.description.trim() || "Transacción",
       amount,
@@ -561,8 +571,8 @@ export function DashboardPage() {
       date: new Date(editForm.date + "T12:00:00"),
       currency: editForm.currency,
       amountUsd: editForm.currency === "USD" ? amount : undefined,
-      txRate: editForm.currency === "USD" ? (parseFloat(editForm.txRate) || usdRate) : undefined,
-      exchangeRateType: editForm.currency === "USD" ? (editingTx.exchangeRateType ?? "MANUAL") : null,
+      txRate: editForm.currency === "USD" ? appliedRate : undefined,
+      exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
     }, (msg) => {
       setAiError(msg)
@@ -1601,18 +1611,72 @@ export function DashboardPage() {
               </div>
             </div>
 
-            {/* USD rate */}
+            {/* USD rate — chips + manual */}
             {editForm.currency === "USD" && (
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Tipo de cambio (ARS por USD)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={editForm.txRate}
-                  onChange={(e) => setEditForm(f => ({ ...f, txRate: e.target.value }))}
-                  className="bg-secondary/50 border-border h-10"
-                  placeholder={String(usdRate)}
-                />
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs text-muted-foreground">Tipo de cambio</Label>
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {rateTypeOptions.map((opt) => {
+                    const isSelected = editForm.exRateType === opt.key
+                    const hasValue = opt.value != null
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setEditForm(f => ({ ...f, exRateType: opt.key as ExchangeRateType }))}
+                        className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <span className="leading-none">{opt.emoji}</span>
+                        <span>{opt.label}</span>
+                        {opt.key !== "MANUAL" && (
+                          <span className={`tabular-nums font-mono ${isSelected ? "opacity-80" : "opacity-55"}`}>
+                            {hasValue
+                              ? `· $${opt.value!.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`
+                              : ratesLoading ? "· …" : ""}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                <AnimatePresence>
+                  {editForm.exRateType === "MANUAL" && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <div className="flex items-center gap-2 bg-chart-5/10 border border-chart-5/25 rounded-lg px-3 py-2">
+                        <DollarSign className="w-3.5 h-3.5 text-chart-5 shrink-0" />
+                        <span className="text-xs text-chart-5/80 font-medium whitespace-nowrap">1 USD =</span>
+                        <input
+                          type="number"
+                          value={editForm.txRate}
+                          onChange={(e) => setEditForm(f => ({ ...f, txRate: e.target.value }))}
+                          placeholder={usdRate.toString()}
+                          className="flex-1 min-w-0 bg-transparent text-sm text-chart-5 font-mono outline-none placeholder:text-chart-5/40"
+                          min={1}
+                          step={50}
+                        />
+                        <span className="text-xs text-chart-5/80 font-medium">ARS</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {editForm.exRateType !== "MANUAL" && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Se guardará a{" "}
+                    <span className="font-semibold text-foreground tabular-nums">
+                      ${getEditAppliedRate().toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                    </span>{" "}
+                    por USD
+                  </p>
+                )}
               </div>
             )}
 
