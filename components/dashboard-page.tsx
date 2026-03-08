@@ -36,9 +36,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
@@ -190,7 +189,7 @@ export function DashboardPage() {
     date: "",
     currency: "ARS" as "ARS" | "USD",
     exRateType: "BLUE" as ExchangeRateType,
-    txRate: "",
+    manualRate: "",
     observation: "",
   })
   const [longPressId, setLongPressId] = useState<string | null>(null)
@@ -546,14 +545,13 @@ export function DashboardPage() {
       date: new Date(tx.date).toISOString().split("T")[0],
       currency: tx.currency,
       exRateType: (tx.exchangeRateType as ExchangeRateType) ?? "BLUE",
-      txRate: String(tx.txRate ?? ""),
+      manualRate: tx.txRate ? String(tx.txRate) : "",
       observation: tx.observation ?? "",
     })
   }
 
-  const getEditAppliedRate = (): number => {
-    if (editForm.currency === "ARS") return 1
-    if (editForm.exRateType === "MANUAL") return parseFloat(editForm.txRate) || usdRate
+  const getEditRate = (): number => {
+    if (editForm.exRateType === "MANUAL") return parseFloat(editForm.manualRate) || usdRate
     const live = liveRates[editForm.exRateType.toLowerCase() as keyof typeof liveRates]
     return (live as { venta?: number } | null)?.venta ?? usdRate
   }
@@ -562,7 +560,6 @@ export function DashboardPage() {
     if (!editingTx) return
     const amount = parseFloat(editForm.amount)
     if (!amount || amount <= 0) return
-    const appliedRate = getEditAppliedRate()
     updateTransaction(editingTx.id, {
       description: editForm.description.trim() || "Transacción",
       amount,
@@ -572,7 +569,7 @@ export function DashboardPage() {
       date: new Date(editForm.date + "T12:00:00"),
       currency: editForm.currency,
       amountUsd: editForm.currency === "USD" ? amount : undefined,
-      txRate: editForm.currency === "USD" ? appliedRate : undefined,
+      txRate: editForm.currency === "USD" ? getEditRate() : undefined,
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
     }, (msg) => {
@@ -964,9 +961,11 @@ export function DashboardPage() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Movimientos ({filteredTransactions.length})
               </p>
-              <p className="text-[11px] text-muted-foreground/60 md:hidden flex items-center gap-1">
-                <span>Pulsá largo para editar o eliminar</span>
-              </p>
+              {filteredTransactions.length > 0 && (
+                <p className="md:hidden text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                  <span>Mantenés pulsado para editar o eliminar</span>
+                </p>
+              )}
             </div>
 
             {filteredTransactions.length === 0 ? (
@@ -1543,235 +1542,237 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Edit transaction drawer ───────────────────────── */}
-      <Drawer open={!!editingTx} onOpenChange={(open) => { if (!open) setEditingTx(null) }} direction="bottom">
-        <DrawerContent className="bg-card border-t border-border focus:outline-none max-h-[92vh]">
-          {/* inner wrapper constrains width on desktop */}
-          <div className="w-full max-w-lg mx-auto flex flex-col min-h-0">
-            <DrawerHeader className="px-5 pt-2 pb-3 border-b border-border/50 text-left">
-              <DrawerTitle className="text-base font-semibold text-foreground">
-                Editar movimiento
-              </DrawerTitle>
-              {editingTx && (
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">{editingTx.description}</p>
-              )}
-            </DrawerHeader>
+      {/* ── Edit transaction dialog ───────────────────────── */}
+      <Dialog open={!!editingTx} onOpenChange={(open) => { if (!open) setEditingTx(null) }}>
+        <DialogContent className="sm:max-w-md p-0 gap-0 bg-card border-border flex flex-col max-h-[92dvh] overflow-hidden">
 
-            <ScrollArea className="flex-1 overflow-y-auto">
-              <div className="px-5 py-4 flex flex-col gap-5">
+          {/* Fixed header */}
+          <DialogHeader className="px-5 pt-5 pb-4 border-b border-border shrink-0">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ${
+                editForm.type === "expense" ? "bg-destructive/10" : "bg-primary/10"
+              }`}>
+                {editForm.type === "expense"
+                  ? <TrendingDown className="w-4.5 h-4.5 text-destructive" />
+                  : <TrendingUp className="w-4.5 h-4.5 text-primary" />}
+              </div>
+              <div>
+                <DialogTitle className="text-foreground text-base leading-tight">Editar movimiento</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[240px]">{editingTx?.description}</p>
+              </div>
+            </div>
+          </DialogHeader>
 
-                {/* Type */}
-                <div className="flex gap-2">
-                  {(["expense", "income"] as const).map((t) => (
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-4">
+
+            {/* Type toggle */}
+            <div className="flex gap-2 p-1 rounded-xl bg-secondary/50 border border-border">
+              {(["expense", "income"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                    editForm.type === t
+                      ? t === "expense"
+                        ? "bg-destructive/15 text-destructive shadow-sm"
+                        : "bg-primary/15 text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setEditForm(f => ({ ...f, type: t }))}
+                >
+                  {t === "expense" ? "− Gasto" : "+ Ingreso"}
+                </button>
+              ))}
+            </div>
+
+            {/* Description */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Descripción</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                className="bg-secondary/50 border-border h-10 text-sm"
+                placeholder="Descripción del movimiento"
+              />
+            </div>
+
+            {/* Amount + Currency */}
+            <div className="flex gap-2 items-end">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <Label className="text-xs font-medium text-muted-foreground">Monto</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                  className="bg-secondary/50 border-border h-10 text-sm font-mono"
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
+                <div className="flex h-10 rounded-lg border border-border overflow-hidden">
+                  {(["ARS", "USD"] as const).map((c) => (
                     <button
-                      key={t}
+                      key={c}
                       type="button"
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors cursor-pointer border ${
-                        editForm.type === t
-                          ? t === "expense"
-                            ? "bg-destructive/10 text-destructive border-destructive/30"
-                            : "bg-primary/10 text-primary border-primary/30"
-                          : "border-border text-muted-foreground hover:bg-secondary/60"
+                      className={`px-4 text-sm font-semibold transition-colors cursor-pointer ${
+                        editForm.currency === c
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
                       }`}
-                      onClick={() => setEditForm(f => ({ ...f, type: t }))}
+                      onClick={() => setEditForm(f => ({ ...f, currency: c }))}
                     >
-                      {t === "expense" ? "Gasto" : "Ingreso"}
+                      {c}
                     </button>
                   ))}
                 </div>
-
-                {/* Description */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Descripción</Label>
-                  <Input
-                    value={editForm.description}
-                    onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
-                    className="bg-secondary/40 border-border h-11 text-sm"
-                    placeholder="Descripción del movimiento"
-                  />
-                </div>
-
-                {/* Amount + Currency */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Monto</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={editForm.amount}
-                      onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))}
-                      className="bg-secondary/40 border-border h-11 text-sm"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
-                    <div className="flex gap-1.5 h-11">
-                      {(["ARS", "USD"] as const).map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`flex-1 rounded-xl text-sm font-semibold transition-colors cursor-pointer border ${
-                            editForm.currency === c
-                              ? "bg-primary/10 text-primary border-primary/30"
-                              : "border-border text-muted-foreground hover:bg-secondary/60"
-                          }`}
-                          onClick={() => setEditForm(f => ({ ...f, currency: c }))}
-                        >
-                          {c}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* USD rate chips */}
-                <AnimatePresence>
-                  {editForm.currency === "USD" && (
-                    <motion.div
-                      className="flex flex-col gap-2 p-3.5 rounded-xl bg-secondary/30 border border-border/60"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      <Label className="text-xs font-medium text-muted-foreground">Tipo de cambio</Label>
-                      <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        {rateTypeOptions.map((opt) => {
-                          const isSelected = editForm.exRateType === opt.key
-                          return (
-                            <button
-                              key={opt.key}
-                              type="button"
-                              onClick={() => setEditForm(f => ({ ...f, exRateType: opt.key as ExchangeRateType }))}
-                              className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
-                                isSelected
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border bg-background/40 text-muted-foreground hover:text-foreground"
-                              }`}
-                            >
-                              <span>{opt.emoji}</span>
-                              <span>{opt.label}</span>
-                              {opt.key !== "MANUAL" && opt.value != null && (
-                                <span className={`tabular-nums font-mono ${isSelected ? "opacity-80" : "opacity-55"}`}>
-                                  · ${opt.value.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
-                                </span>
-                              )}
-                              {opt.key !== "MANUAL" && opt.value == null && ratesLoading && (
-                                <span className="opacity-40">· …</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <AnimatePresence>
-                        {editForm.exRateType === "MANUAL" ? (
-                          <motion.div
-                            key="manual"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.18 }}
-                          >
-                            <div className="flex items-center gap-2 bg-chart-5/10 border border-chart-5/25 rounded-lg px-3 py-2 mt-1">
-                              <DollarSign className="w-3.5 h-3.5 text-chart-5 shrink-0" />
-                              <span className="text-xs text-chart-5/80 font-medium whitespace-nowrap">1 USD =</span>
-                              <input
-                                type="number"
-                                value={editForm.txRate}
-                                onChange={(e) => setEditForm(f => ({ ...f, txRate: e.target.value }))}
-                                placeholder={usdRate.toString()}
-                                className="flex-1 min-w-0 bg-transparent text-sm text-chart-5 font-mono outline-none placeholder:text-chart-5/40"
-                                min={1} step={50}
-                              />
-                              <span className="text-xs text-chart-5/80 font-medium">ARS</span>
-                            </div>
-                          </motion.div>
-                        ) : (
-                          <motion.p
-                            key="rate-preview"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="text-[11px] text-muted-foreground"
-                          >
-                            Se guardará a{" "}
-                            <span className="font-semibold text-foreground tabular-nums">
-                              ${getEditAppliedRate().toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
-                            </span>{" "}
-                            por USD
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Category + Date */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
-                    <Select
-                      value={editForm.category}
-                      onValueChange={(val) => setEditForm(f => ({ ...f, category: val, icon: CATEGORY_ICON_MAP[val] ?? "ShoppingCart" }))}
-                    >
-                      <SelectTrigger className="bg-secondary/40 border-border h-11 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        {VALID_CATEGORIES.map((cat) => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Fecha</Label>
-                    <Input
-                      type="date"
-                      value={editForm.date}
-                      onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
-                      className="bg-secondary/40 border-border h-11 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Observation */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Nota (opcional)</Label>
-                  <Textarea
-                    value={editForm.observation}
-                    onChange={(e) => setEditForm(f => ({ ...f, observation: e.target.value }))}
-                    className="bg-secondary/40 border-border resize-none text-sm"
-                    rows={2}
-                    placeholder="Ej: Incluye propina, cuotas..."
-                  />
-                </div>
-
               </div>
-            </ScrollArea>
+            </div>
 
-            {/* Footer */}
-            <div className="px-5 py-4 border-t border-border/50 flex gap-3 shrink-0">
-              <Button
-                variant="outline"
-                className="flex-1 cursor-pointer h-11"
-                onClick={() => setEditingTx(null)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer h-11 font-semibold"
-                onClick={handleSaveEdit}
-                disabled={!editForm.amount || parseFloat(editForm.amount) <= 0}
-              >
-                Guardar cambios
-              </Button>
+            {/* USD rate type — same chips as Magic Bar */}
+            <AnimatePresence>
+              {editForm.currency === "USD" && (
+                <motion.div
+                  className="flex flex-col gap-2 rounded-xl border border-border bg-secondary/30 p-3"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    Tipo de cambio
+                  </p>
+                  {/* Chips */}
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {rateTypeOptions.map((opt) => {
+                      const isSelected = editForm.exRateType === opt.key
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => setEditForm(f => ({ ...f, exRateType: opt.key as ExchangeRateType }))}
+                          className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-border/80"
+                          }`}
+                        >
+                          <span className="leading-none">{opt.emoji}</span>
+                          <span>{opt.label}</span>
+                          {opt.key !== "MANUAL" && opt.value != null && (
+                            <span className={`tabular-nums font-mono ${isSelected ? "opacity-80" : "opacity-55"}`}>
+                              · ${opt.value.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
+                          {opt.key !== "MANUAL" && opt.value == null && ratesLoading && (
+                            <span className="opacity-40">· …</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Manual rate input */}
+                  <AnimatePresence>
+                    {editForm.exRateType === "MANUAL" && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        <div className="flex items-center gap-2 bg-chart-5/10 border border-chart-5/25 rounded-lg px-3 py-2 mt-1">
+                          <DollarSign className="w-3.5 h-3.5 text-chart-5 shrink-0" />
+                          <span className="text-xs text-chart-5/80 font-medium whitespace-nowrap">1 USD =</span>
+                          <input
+                            type="number"
+                            value={editForm.manualRate}
+                            onChange={(e) => setEditForm(f => ({ ...f, manualRate: e.target.value }))}
+                            placeholder={String(usdRate)}
+                            className="flex-1 min-w-0 bg-transparent text-sm text-chart-5 font-mono outline-none placeholder:text-chart-5/40"
+                            min={1}
+                            step={50}
+                          />
+                          <span className="text-xs text-chart-5/80 font-medium">ARS</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Preview */}
+                  {editForm.amount && parseFloat(editForm.amount) > 0 && (
+                    <p className="text-[11px] text-muted-foreground tabular-nums">
+                      US$ {parseFloat(editForm.amount).toLocaleString("es-AR")} ≈ $ {(parseFloat(editForm.amount) * getEditRate()).toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Category + Date row */}
+            <div className="flex gap-2">
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
+                <Select
+                  value={editForm.category}
+                  onValueChange={(val) => setEditForm(f => ({ ...f, category: val, icon: CATEGORY_ICON_MAP[val] ?? "ShoppingCart" }))}
+                >
+                  <SelectTrigger className="bg-secondary/50 border-border h-10 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {VALID_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat} className="text-sm">{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <Label className="text-xs font-medium text-muted-foreground">Fecha</Label>
+                <Input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
+                  className="bg-secondary/50 border-border h-10 text-sm w-[9.5rem]"
+                />
+              </div>
+            </div>
+
+            {/* Observation */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Nota (opcional)</Label>
+              <Textarea
+                value={editForm.observation}
+                onChange={(e) => setEditForm(f => ({ ...f, observation: e.target.value }))}
+                className="bg-secondary/50 border-border resize-none text-sm"
+                rows={2}
+                placeholder="Ej: Incluye propina, cuotas, detalles..."
+              />
             </div>
           </div>
-        </DrawerContent>
-      </Drawer>
+
+          {/* Fixed footer */}
+          <div className="px-5 pb-5 pt-3 border-t border-border shrink-0 flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 cursor-pointer h-10"
+              onClick={() => setEditingTx(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer h-10 font-semibold"
+              onClick={handleSaveEdit}
+              disabled={!editForm.amount || parseFloat(editForm.amount) <= 0}
+            >
+              Guardar cambios
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Live camera modal ─────────────────────────────── */}
       <AnimatePresence>
