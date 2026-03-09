@@ -559,8 +559,7 @@ export function SettingsPage() {
             <div className="flex items-start gap-3 rounded-xl bg-secondary/50 p-4 border border-border">
               <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Tus credenciales se guardan localmente en tu navegador. Al
-                cambiar de modo tus datos se mantienen intactos.
+                Tus claves se almacenan en tu cuenta de Supabase, cifradas en reposo. Solo vos podés acceder a ellas a través de tu sesión.
               </p>
             </div>
 
