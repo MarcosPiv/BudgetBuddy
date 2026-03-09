@@ -6,8 +6,6 @@ import {
   Brain,
   Bot,
   Sparkles,
-  Eye,
-  EyeOff,
   ShieldCheck,
   ArrowLeft,
   Wallet,
@@ -86,7 +84,7 @@ export function SettingsPage() {
     saveProfile,
   } = useApp()
 
-  const [showKey, setShowKey] = useState(false)
+  const [editingKey, setEditingKey] = useState(false)
   const [localProvider, setLocalProvider] = useState<AIProvider>(aiProvider)
   const [localKeysClaude, setLocalKeysClaude] = useState(apiKeyClaude)
   const [localKeysOpenAI, setLocalKeysOpenAI] = useState(apiKeyOpenAI)
@@ -158,6 +156,7 @@ export function SettingsPage() {
       usdRate: newRate,
     })
 
+    setEditingKey(false)
     setSaved(true)
     setTimeout(() => {
       setSaved(false)
@@ -481,7 +480,7 @@ export function SettingsPage() {
                       type="button"
                       onClick={() => {
                         setLocalProvider(p.id)
-                        setShowKey(false)
+                        setEditingKey(false)
                       }}
                       className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all cursor-pointer ${
                         isSelected
@@ -509,30 +508,49 @@ export function SettingsPage() {
 
               {/* API Key input for selected provider */}
               <div className="flex flex-col gap-1.5">
-                <Label
-                  htmlFor="providerKey"
-                  className="text-xs text-muted-foreground"
-                >
+                <Label htmlFor="providerKey" className="text-xs text-muted-foreground">
                   API Key · {activeProviderMeta.label}
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="providerKey"
-                    type={showKey ? "text" : "password"}
-                    placeholder={activeProviderMeta.placeholder}
-                    value={displayedKey}
-                    onChange={(e) => handleKeyChange(e.target.value)}
-                    className="pr-10 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                    aria-label={showKey ? "Ocultar clave" : "Mostrar clave"}
-                  >
-                    {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+
+                {displayedKey && !editingKey ? (
+                  /* Masked display when key is saved */
+                  <div className="flex items-center gap-2 h-11 px-3 rounded-lg bg-secondary/50 border border-border">
+                    <span className="flex-1 font-mono text-sm text-foreground tracking-wider">
+                      {displayedKey.slice(0, 8)}{"•".repeat(16)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingKey(true)}
+                      className="text-xs font-medium text-primary hover:text-primary/80 transition-colors cursor-pointer shrink-0"
+                    >
+                      Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  /* Input when no key or editing */
+                  <div className="flex gap-2">
+                    <Input
+                      id="providerKey"
+                      type="password"
+                      autoComplete="off"
+                      placeholder={activeProviderMeta.placeholder}
+                      value={editingKey ? "" : displayedKey}
+                      onChange={(e) => handleKeyChange(e.target.value)}
+                      onFocus={() => { if (editingKey) handleKeyChange("") }}
+                      className="flex-1 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 font-mono text-sm"
+                    />
+                    {editingKey && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingKey(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 px-2"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <p className="text-[11px] text-muted-foreground">{activeProviderMeta.hint}</p>
               </div>
             </div>
