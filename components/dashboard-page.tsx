@@ -45,6 +45,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
+import { supabase } from "@/lib/supabase"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
 import { ExchangeWidget } from "@/components/ui/exchange-widget"
@@ -116,6 +117,67 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+// Compress an image file to JPEG ≤1200px before uploading to save storage
+function compressImage(file: File, maxPx = 1200, quality = 0.78): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext("2d")
+      if (!ctx) { reject(new Error("Canvas not supported")); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error("Compression failed")),
+        "image/jpeg",
+        quality
+      )
+    }
+    img.onerror = reject
+    img.src = objectUrl
+  })
+}
+
+// Renders a signed receipt image fetched from Supabase Storage
+function ReceiptImage({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [err, setErr] = useState(false)
+
+  useEffect(() => {
+    supabase.storage
+      .from("receipts")
+      .createSignedUrl(path, 3600)
+      .then(({ data, error }) => {
+        if (error || !data?.signedUrl) { setErr(true); return }
+        setUrl(data.signedUrl)
+      })
+  }, [path])
+
+  if (err) return (
+    <p className="text-xs text-muted-foreground/60 italic">No se pudo cargar el comprobante.</p>
+  )
+  if (!url) return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+      <span>Cargando comprobante...</span>
+    </div>
+  )
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="block mb-2">
+      <img
+        src={url}
+        alt="Comprobante"
+        className="w-full rounded-xl max-h-52 object-cover border border-border hover:opacity-90 transition-opacity"
+      />
+      <p className="text-[10px] text-muted-foreground/50 mt-1 text-center">Tocá para ver completo</p>
+    </a>
+  )
+}
+
 function formatDate(d: Date): string {
   const now = new Date()
   const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
@@ -131,6 +193,7 @@ function formatDateShort(d: Date): string {
 
 export function DashboardPage() {
   const {
+    user,
     transactions,
     addTransaction,
     deleteTransaction,
@@ -492,6 +555,22 @@ export function DashboardPage() {
         return
       }
 
+      // Upload receipt image to Supabase Storage (non-blocking, best-effort)
+      let receiptUrl: string | undefined
+      const imageAtt = capturedAttachments.find(a => a.type === "image")
+      if (imageAtt && user) {
+        try {
+          const compressed = await compressImage(imageAtt.file)
+          const path = `${user.id}/${Date.now()}.jpg`
+          const { error: uploadError } = await supabase.storage
+            .from("receipts")
+            .upload(path, compressed, { contentType: "image/jpeg" })
+          if (!uploadError) receiptUrl = path
+        } catch {
+          // Non-critical: transaction still saves without the receipt
+        }
+      }
+
       addTransaction({
         description: result.description,
         amount: result.amount,
@@ -504,6 +583,7 @@ export function DashboardPage() {
         txRate: curr === "USD" ? appliedRate : undefined,
         exchangeRateType: rateType,
         observation: obs,
+        receiptUrl,
       }, (msg) => {
         setAiError(msg)
         setTimeout(() => setAiError(null), 6000)
@@ -1240,7 +1320,7 @@ export function DashboardPage() {
                             </button>
                           </div>
 
-                          {tx.observation && (
+                          {(tx.observation || tx.receiptUrl) && (
                             <ChevronRight
                               className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${
                                 isExpanded ? "rotate-90" : ""
@@ -1287,19 +1367,22 @@ export function DashboardPage() {
                           )}
                         </AnimatePresence>
 
-                        {/* Observation expand */}
+                        {/* Observation + Receipt expand */}
                         <AnimatePresence>
-                          {isExpanded && tx.observation && (
+                          {isExpanded && (tx.observation || tx.receiptUrl) && (
                             <motion.div
                               className="ml-14 mr-2 mt-1 mb-1 px-4 py-2.5 rounded-xl bg-secondary/50 border border-border"
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}
                               exit={{ opacity: 0, height: 0 }}
                             >
-                              <p className="text-xs text-muted-foreground flex items-start gap-2">
-                                <StickyNote className="w-3 h-3 mt-0.5 shrink-0 text-accent" />
-                                {tx.observation}
-                              </p>
+                              {tx.receiptUrl && <ReceiptImage path={tx.receiptUrl} />}
+                              {tx.observation && (
+                                <p className="text-xs text-muted-foreground flex items-start gap-2">
+                                  <StickyNote className="w-3 h-3 mt-0.5 shrink-0 text-accent" />
+                                  {tx.observation}
+                                </p>
+                              )}
                             </motion.div>
                           )}
                         </AnimatePresence>

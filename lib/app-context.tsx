@@ -25,6 +25,8 @@ export interface Transaction {
   /** Tasa ARS bloqueada al momento del gasto — inmutable */
   txRate?: number
   exchangeRateType?: ExchangeRateType | null
+  /** Ruta en Supabase Storage del comprobante adjunto */
+  receiptUrl?: string
 }
 
 // ─── DB row → Transaction ─────────────────────────────────────────────────────
@@ -43,6 +45,7 @@ function mapTransaction(row: any): Transaction {
     amountUsd: row.amount_usd != null ? Number(row.amount_usd) : undefined,
     txRate: row.tx_rate != null ? Number(row.tx_rate) : undefined,
     exchangeRateType: row.exchange_rate_type ?? null,
+    receiptUrl: row.receipt_url ?? undefined,
   }
 }
 
@@ -257,6 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount_usd: t.amountUsd ?? null,
         tx_rate: t.txRate ?? null,
         exchange_rate_type: t.exchangeRateType ?? null,
+        receipt_url: t.receiptUrl ?? null,
       })
       .select()
       .single()
@@ -310,6 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         amount_usd: merged.amountUsd ?? null,
         tx_rate: merged.txRate ?? null,
         exchange_rate_type: merged.exchangeRateType ?? null,
+        receipt_url: merged.receiptUrl ?? null,
       })
       .eq("id", id)
       .then(({ error }) => {
