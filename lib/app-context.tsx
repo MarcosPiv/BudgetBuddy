@@ -115,7 +115,20 @@ const AppContext = createContext<AppState | null>(null)
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loadingAuth, setLoadingAuth] = useState(true)
-  const [currentView, setView] = useState<View>("landing")
+  const [currentView, setCurrentView] = useState<View>("landing")
+
+  const setView = (view: View) => {
+    setCurrentView(view)
+    if (typeof window !== "undefined") {
+      // Persist so tab-discard / remount restores the last authenticated view
+      const authenticatedViews: View[] = ["dashboard", "settings", "profile", "analytics"]
+      if (authenticatedViews.includes(view)) {
+        sessionStorage.setItem("bb_view", view)
+      } else {
+        sessionStorage.removeItem("bb_view")
+      }
+    }
+  }
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -187,7 +200,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUser(u)
       if (u) {
         Promise.all([loadProfile(u.id), loadTransactions(u.id)]).finally(() => {
-          setView("dashboard")
+          // Restore last authenticated view (survives tab discard / remount)
+          const saved = sessionStorage.getItem("bb_view") as View | null
+          const authenticatedViews: View[] = ["dashboard", "settings", "profile", "analytics"]
+          setView(saved && authenticatedViews.includes(saved) ? saved : "dashboard")
           setLoadingAuth(false)
         })
       } else {
@@ -202,6 +218,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null)
         setIsPasswordRecovery(true)
         setView("auth")
+        return
+      }
+
+      // Token refresh / user update — just sync the user, don't navigate away
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        setUser(session?.user ?? null)
         return
       }
 
@@ -229,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Auth actions ─────────────────────────────────────────────────────────────
   const signOut = () => {
     // Optimistic: clear state and navigate immediately so the UI never freezes
+    sessionStorage.removeItem("bb_view")
     setUser(null)
     setTransactions([])
     setUserName("Usuario")
