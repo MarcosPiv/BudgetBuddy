@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, useMemo, type ReactNode } from "react"
 import { type User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 
@@ -112,17 +112,21 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null)
 
+const AUTHENTICATED_VIEWS: View[] = ["dashboard", "settings", "profile", "analytics"]
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loadingAuth, setLoadingAuth] = useState(true)
   const [currentView, setCurrentView] = useState<View>("landing")
 
+  // Ref so auth callbacks (closures) always read the latest view without stale state
+  const currentViewRef = useRef<View>("landing")
+
   const setView = (view: View) => {
+    currentViewRef.current = view
     setCurrentView(view)
     if (typeof window !== "undefined") {
-      // Persist so tab-discard / remount restores the last authenticated view
-      const authenticatedViews: View[] = ["dashboard", "settings", "profile", "analytics"]
-      if (authenticatedViews.includes(view)) {
+      if (AUTHENTICATED_VIEWS.includes(view)) {
         sessionStorage.setItem("bb_view", view)
       } else {
         sessionStorage.removeItem("bb_view")
@@ -221,17 +225,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // Token refresh / user update — just sync the user, don't navigate away
-      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-        setUser(session?.user ?? null)
-        return
-      }
-
       const u = session?.user ?? null
       setUser(u)
       if (u) {
         Promise.all([loadProfile(u.id), loadTransactions(u.id)]).then(() => {
-          setView("dashboard")
+          // Only navigate to dashboard if we're on an unauthenticated view.
+          // If the user is already on settings/analytics/profile/dashboard,
+          // any auth event (SIGNED_IN, TOKEN_REFRESHED, etc.) must NOT redirect them.
+          if (!AUTHENTICATED_VIEWS.includes(currentViewRef.current)) {
+            setView("dashboard")
+          }
           setLoadingAuth(false)
         })
       } else {
