@@ -34,6 +34,8 @@ import {
   Search,
   CalendarIcon,
   AlertTriangle,
+  BarChart2,
+  Repeat,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -191,6 +193,124 @@ function formatDateShort(d: Date): string {
   return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
 }
 
+// ── Onboarding ────────────────────────────────────────────────────────────────
+const ONBOARDING_KEY = "bb_onboarding_v1"
+
+const ONBOARDING_STEPS = [
+  {
+    Icon: Sparkles,
+    title: "El Magic Bar",
+    description: "Escribí un gasto en lenguaje natural, adjuntá una foto de ticket o grabá un audio. La IA lo interpreta y registra automáticamente.",
+  },
+  {
+    Icon: Bot,
+    title: "BudgetBuddy AI",
+    description: "Preguntale al asistente sobre tus finanzas. Analizá tendencias, pedí consejos y chequeá en qué estás gastando más.",
+  },
+  {
+    Icon: Wallet,
+    title: "Tu resumen",
+    description: "Filtrá por semana, mes o año. Exportá tus datos en CSV. Marcá gastos como fijos mensuales para aplicarlos con un clic.",
+  },
+]
+
+function OnboardingOverlay({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0)
+  const isLast = step === ONBOARDING_STEPS.length - 1
+  const { Icon, title, description } = ONBOARDING_STEPS[step]
+
+  const handleNext = () => {
+    if (isLast) {
+      localStorage.setItem(ONBOARDING_KEY, "done")
+      onDone()
+    } else {
+      setStep(s => s + 1)
+    }
+  }
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/80 backdrop-blur-md px-5 pb-8 sm:pb-0"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      <motion.div
+        className="w-full max-w-sm rounded-2xl border border-border bg-card p-7 flex flex-col items-center gap-5 shadow-2xl"
+        initial={{ scale: 0.94, y: 20, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.94, y: 20, opacity: 0 }}
+        transition={{ type: "spring", damping: 22, stiffness: 220 }}
+      >
+        {/* Step icon */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.18 }}
+          >
+            <Icon className="w-8 h-8 text-primary" />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Text */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            className="text-center"
+            initial={{ opacity: 0, x: 14 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -14 }}
+            transition={{ duration: 0.18 }}
+          >
+            <h2 className="text-lg font-bold text-foreground mb-2">{title}</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Step dots */}
+        <div className="flex items-center gap-1.5">
+          {ONBOARDING_STEPS.map((_, i) => (
+            <div
+              key={i}
+              className={`rounded-full transition-all duration-300 ${
+                i === step ? "w-5 h-2 bg-primary" : "w-2 h-2 bg-secondary"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          type="button"
+          onClick={handleNext}
+          className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
+        >
+          {isLast ? "Comenzar" : "Siguiente"}
+        </button>
+
+        {/* Skip */}
+        {!isLast && (
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem(ONBOARDING_KEY, "done")
+              onDone()
+            }}
+            className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer -mt-2"
+          >
+            Omitir
+          </button>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
 export function DashboardPage() {
   const {
     user,
@@ -252,6 +372,12 @@ export function DashboardPage() {
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
 
+  // Onboarding
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (typeof window === "undefined") return false
+    return !localStorage.getItem(ONBOARDING_KEY)
+  })
+
   // Edit & long-press
   const [editingTx, setEditingTx] = useState<import("@/lib/app-context").Transaction | null>(null)
   const [editForm, setEditForm] = useState({
@@ -265,6 +391,7 @@ export function DashboardPage() {
     exRateType: "BLUE" as ExchangeRateType,
     manualRate: "",
     observation: "",
+    isRecurring: false,
   })
   const [longPressId, setLongPressId] = useState<string | null>(null)
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -714,6 +841,7 @@ export function DashboardPage() {
       exRateType: (tx.exchangeRateType as ExchangeRateType) ?? "BLUE",
       manualRate: tx.txRate ? String(tx.txRate) : "",
       observation: tx.observation ?? "",
+      isRecurring: tx.isRecurring ?? false,
     })
   }
 
@@ -739,6 +867,7 @@ export function DashboardPage() {
       txRate: editForm.currency === "USD" ? getEditRate() : undefined,
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
+      isRecurring: editForm.isRecurring,
     }, (msg) => {
       setAiError(msg)
       setTimeout(() => setAiError(null), 5000)
@@ -825,6 +954,7 @@ export function DashboardPage() {
     userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "U"
 
   return (
+    <>
     <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
 
       {/* ── Sticky header ─────────────────────────────────────── */}
@@ -862,6 +992,15 @@ export function DashboardPage() {
             aria-label="Chat"
           >
             <MessageCircle className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={() => setView("analytics")}
+            aria-label="Analítica"
+          >
+            <BarChart2 className="w-5 h-5" />
           </Button>
           <Button
             variant="ghost"
@@ -2146,6 +2285,32 @@ export function DashboardPage() {
                 placeholder="Ej: Incluye propina, cuotas, detalles..."
               />
             </div>
+
+            {/* Recurring toggle */}
+            <div className="flex items-center justify-between py-1">
+              <div className="flex flex-col gap-0.5">
+                <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
+                  Fijo mensual
+                </Label>
+                <span className="text-[11px] text-muted-foreground">Se registra automáticamente cada mes</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={editForm.isRecurring}
+                onClick={() => setEditForm(f => ({ ...f, isRecurring: !f.isRecurring }))}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                  editForm.isRecurring ? "bg-primary" : "bg-secondary"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
+                    editForm.isRecurring ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Fixed footer */}
@@ -2216,5 +2381,13 @@ export function DashboardPage() {
         )}
       </AnimatePresence>
     </div>
+
+    {/* ── Onboarding overlay ────────────────────────────── */}
+    <AnimatePresence>
+      {showOnboarding && (
+        <OnboardingOverlay onDone={() => setShowOnboarding(false)} />
+      )}
+    </AnimatePresence>
+    </>
   )
 }

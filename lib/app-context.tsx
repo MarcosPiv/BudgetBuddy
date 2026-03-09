@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, useMemo, type ReactNode
 import { type User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 
-export type View = "landing" | "auth" | "settings" | "dashboard" | "profile"
+export type View = "landing" | "auth" | "settings" | "dashboard" | "profile" | "analytics"
 export type ProfileMode = "standard" | "expenses_only"
 export type TimeFilter = "week" | "month" | "year" | "custom"
 export type ExchangeRateMode = "api" | "manual"
@@ -27,6 +27,8 @@ export interface Transaction {
   exchangeRateType?: ExchangeRateType | null
   /** Ruta en Supabase Storage del comprobante adjunto */
   receiptUrl?: string
+  /** Se repite automáticamente cada mes */
+  isRecurring?: boolean
 }
 
 // ─── DB row → Transaction ─────────────────────────────────────────────────────
@@ -46,6 +48,7 @@ function mapTransaction(row: any): Transaction {
     txRate: row.tx_rate != null ? Number(row.tx_rate) : undefined,
     exchangeRateType: row.exchange_rate_type ?? null,
     receiptUrl: row.receipt_url ?? undefined,
+    isRecurring: row.is_recurring ?? false,
   }
 }
 
@@ -261,6 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         tx_rate: t.txRate ?? null,
         exchange_rate_type: t.exchangeRateType ?? null,
         receipt_url: t.receiptUrl ?? null,
+        is_recurring: t.isRecurring ?? false,
       })
       .select()
       .single()
@@ -315,6 +319,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         tx_rate: merged.txRate ?? null,
         exchange_rate_type: merged.exchangeRateType ?? null,
         receipt_url: merged.receiptUrl ?? null,
+        is_recurring: merged.isRecurring ?? false,
       })
       .eq("id", id)
       .then(({ error }) => {

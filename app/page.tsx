@@ -20,6 +20,10 @@ const ProfilePage = dynamic(
   () => import("@/components/profile-page").then((m) => ({ default: m.ProfilePage })),
   { ssr: false }
 )
+const AnalyticsPage = dynamic(
+  () => import("@/components/analytics-page").then((m) => ({ default: m.AnalyticsPage })),
+  { ssr: false }
+)
 
 function AppRouter() {
   const { currentView, loadingAuth } = useApp()
@@ -54,6 +58,7 @@ function AppRouter() {
         {currentView === "settings" && <SettingsPage />}
         {currentView === "dashboard" && <DashboardPage />}
         {currentView === "profile" && <ProfilePage />}
+        {currentView === "analytics" && <AnalyticsPage />}
       </motion.div>
     </AnimatePresence>
   )
