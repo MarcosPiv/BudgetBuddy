@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useApp } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 type Mode = "login" | "register" | "forgot"
 
@@ -77,6 +78,7 @@ export function AuthPage() {
       if (mode === "login") {
         const { error: err } = await supabase.auth.signInWithPassword({ email, password })
         if (err) throw err
+        toast.success("¡Bienvenido de vuelta!", { description: email })
         // Navigation handled by onAuthStateChange in AppProvider
       } else {
         const { data, error: err } = await supabase.auth.signUp({
@@ -98,6 +100,8 @@ export function AuthPage() {
         if (!data.session) {
           // Email confirmation required
           setSuccessMsg("¡Cuenta creada! Revisá tu email para confirmar y luego iniciá sesión.")
+        } else {
+          toast.success("¡Cuenta creada!", { description: `Bienvenido${name.trim() ? `, ${name.trim()}` : ""}` })
         }
         // If session exists, onAuthStateChange fires → loads profile with real name → dashboard
       }
