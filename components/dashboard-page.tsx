@@ -225,6 +225,11 @@ export function DashboardPage() {
   const [isChatProcessing, setIsChatProcessing] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
+  // Chat audio recording
+  const [isChatRecording, setIsChatRecording] = useState(false)
+  const chatMediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chatAudioChunksRef = useRef<Blob[]>([])
+
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -633,33 +638,30 @@ export function DashboardPage() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!chatInput.trim() || isChatProcessing) return
-
+    if (!chatInput.trim() || isChatProcessing || isChatRecording) return
     const userMsg = chatInput.trim()
     setChatInput("")
-
-    // Add user message and capture current history before state update
     const prevMessages = chatMessages
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }])
+    await dispatchChatMessage(userMsg, prevMessages)
+  }
 
+  // Shared helper: build history array and call AI chat (text or audio)
+  const dispatchChatMessage = async (userLabel: string, prevMessages: ChatMessage[], audioAttachment?: AIAttachment) => {
     if (!apiKey.trim()) {
       setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para usar el asistente." }])
       return
     }
-
     setIsChatProcessing(true)
-
-    // Build history: skip the initial greeting, convert roles
     const history: ChatTurn[] = [
       ...prevMessages.slice(1).map(m => ({
         role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
         text: m.text,
       })),
-      { role: "user", text: userMsg },
+      { role: "user" as const, text: userLabel },
     ]
-
     try {
-      const reply = await callAIChat(aiProvider, apiKey, buildFinancialContext(), history)
+      const reply = await callAIChat(aiProvider, apiKey, buildFinancialContext(), history, audioAttachment)
       setChatMessages(prev => [...prev, { role: "bot", text: reply }])
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al conectar."
@@ -667,6 +669,35 @@ export function DashboardPage() {
     } finally {
       setIsChatProcessing(false)
     }
+  }
+
+  const startChatRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      chatMediaRecorderRef.current = recorder
+      chatAudioChunksRef.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chatAudioChunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chatAudioChunksRef.current, { type: "audio/webm" })
+        const file = new File([blob], `chat-voz-${Date.now()}.webm`, { type: "audio/webm" })
+        const base64 = await fileToBase64(file)
+        const attachment: AIAttachment = { type: "audio", base64, mimeType: "audio/webm", file }
+        const prevMessages = chatMessages
+        setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
+        await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
+      }
+      recorder.start()
+      setIsChatRecording(true)
+    } catch {
+      setChatMessages(prev => [...prev, { role: "bot", text: "No se pudo acceder al micrófono." }])
+    }
+  }
+
+  const stopChatRecording = () => {
+    chatMediaRecorderRef.current?.stop()
+    setIsChatRecording(false)
   }
 
   const openEdit = (tx: import("@/lib/app-context").Transaction) => {
@@ -1495,14 +1526,28 @@ export function DashboardPage() {
                   <Input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Pregunta sobre tus finanzas..."
-                    disabled={isChatProcessing}
+                    placeholder={isChatRecording ? "Grabando audio..." : "Pregunta sobre tus finanzas..."}
+                    disabled={isChatProcessing || isChatRecording}
                     className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0 text-sm"
                   />
                   <Button
-                    type="submit"
+                    type="button"
                     size="icon"
                     disabled={isChatProcessing}
+                    onClick={() => isChatRecording ? stopChatRecording() : startChatRecording()}
+                    className={`shrink-0 rounded-lg h-8 w-8 cursor-pointer disabled:opacity-50 transition-colors ${
+                      isChatRecording
+                        ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
+                        : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                    }`}
+                    aria-label={isChatRecording ? "Detener grabación" : "Grabar audio"}
+                  >
+                    {isChatRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={isChatProcessing || isChatRecording}
                     className="bg-accent text-accent-foreground hover:bg-accent/90 shrink-0 rounded-lg h-8 w-8 cursor-pointer disabled:opacity-50"
                     aria-label="Enviar"
                   >

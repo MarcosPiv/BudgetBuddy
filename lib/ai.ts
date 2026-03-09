@@ -182,7 +182,10 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
   return extractAndValidate(text)
 }
 
-async function callClaudeChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+async function callClaudeChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  if (audioAttachment) {
+    throw new Error("Claude no soporta audio en el chat. Cambiá a Gemini u OpenAI en Ajustes.")
+  }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -264,7 +267,15 @@ async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachm
   return extractAndValidate(text)
 }
 
-async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  let finalHistory = history
+  if (audioAttachment?.file) {
+    const transcript = await transcribeWithWhisper(apiKey, audioAttachment.file)
+    finalHistory = [
+      ...history.slice(0, -1),
+      { role: "user" as const, text: transcript || "[Audio no reconocido]" },
+    ]
+  }
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -277,7 +288,7 @@ async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn
       temperature: 0.7,
       messages: [
         { role: "system", content: buildChatSystemPrompt(context) },
-        ...history.map(m => ({ role: m.role, content: m.text })),
+        ...finalHistory.map(m => ({ role: m.role, content: m.text })),
       ],
     }),
   })
@@ -332,7 +343,24 @@ async function callGemini(apiKey: string, input: string, attachments?: AIAttachm
   return extractAndValidate(text)
 }
 
-async function callGeminiChat(apiKey: string, context: string, history: ChatTurn[]): Promise<string> {
+async function callGeminiChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  const contents = history.map((m, i) => {
+    const isLast = i === history.length - 1
+    if (isLast && audioAttachment) {
+      return {
+        role: "user",
+        parts: [
+          { inline_data: { mime_type: audioAttachment.mimeType, data: audioAttachment.base64 } },
+          { text: m.text || "Procesá este mensaje de voz como consulta sobre mis finanzas." },
+        ],
+      }
+    }
+    return {
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.text }],
+    }
+  })
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
@@ -340,10 +368,7 @@ async function callGeminiChat(apiKey: string, context: string, history: ChatTurn
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: buildChatSystemPrompt(context) }] },
-        contents: history.map(m => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.text }],
-        })),
+        contents,
         generationConfig: {
           maxOutputTokens: 300,
           temperature: 0.7,
@@ -384,12 +409,13 @@ export async function callAIChat(
   provider: AIProvider,
   apiKey: string,
   context: string,
-  history: ChatTurn[]
+  history: ChatTurn[],
+  audioAttachment?: AIAttachment
 ): Promise<string> {
   try {
-    if (provider === "claude") return await callClaudeChat(apiKey, context, history)
-    if (provider === "openai") return await callOpenAIChat(apiKey, context, history)
-    return await callGeminiChat(apiKey, context, history)
+    if (provider === "claude") return await callClaudeChat(apiKey, context, history, audioAttachment)
+    if (provider === "openai") return await callOpenAIChat(apiKey, context, history, audioAttachment)
+    return await callGeminiChat(apiKey, context, history, audioAttachment)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))
