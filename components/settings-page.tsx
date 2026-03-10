@@ -564,20 +564,28 @@ export function SettingsPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">Recordarte registrar gastos</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {notifDaily && (
-                        <input
-                          type="time"
-                          value={notifDailyTime}
-                          onChange={(e) => { setNotifDailyTime(e.target.value); localStorage.setItem("bb_notif_daily_time", e.target.value) }}
-                          className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground outline-none focus:border-primary/60 tabular-nums cursor-pointer"
-                        />
-                      )}
+                      <AnimatePresence>
+                        {notifDaily && (
+                          <motion.input
+                            type="time"
+                            value={notifDailyTime}
+                            onChange={(e) => { setNotifDailyTime(e.target.value); localStorage.setItem("bb_notif_daily_time", e.target.value) }}
+                            className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground outline-none focus:border-primary/60 tabular-nums cursor-pointer"
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: "auto" }}
+                            exit={{ opacity: 0, width: 0 }}
+                            transition={{ duration: 0.2 }}
+                          />
+                        )}
+                      </AnimatePresence>
                       <button
                         type="button"
+                        role="switch"
+                        aria-checked={notifDaily}
                         onClick={() => handleNotifToggle("bb_notif_daily", setNotifDaily, notifDaily)}
-                        className={`relative w-10 h-5.5 rounded-full transition-colors cursor-pointer shrink-0 ${notifDaily ? "bg-primary" : "bg-secondary border border-border"}`}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifDaily ? "bg-primary" : "bg-muted"}`}
                       >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifDaily ? "translate-x-5" : "translate-x-0.5"}`} />
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifDaily ? "translate-x-5" : "translate-x-0"}`} />
                       </button>
                     </div>
                   </div>
@@ -590,10 +598,12 @@ export function SettingsPage() {
                     </div>
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={notifBudget}
                       onClick={() => handleNotifToggle("bb_notif_budget", setNotifBudget, notifBudget)}
-                      className={`relative w-10 h-5.5 rounded-full transition-colors cursor-pointer shrink-0 ${notifBudget ? "bg-primary" : "bg-secondary border border-border"}`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifBudget ? "bg-primary" : "bg-muted"}`}
                     >
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifBudget ? "translate-x-5" : "translate-x-0.5"}`} />
+                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifBudget ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
 
@@ -605,10 +615,12 @@ export function SettingsPage() {
                     </div>
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={notifRecurring}
                       onClick={() => handleNotifToggle("bb_notif_recurring", setNotifRecurring, notifRecurring)}
-                      className={`relative w-10 h-5.5 rounded-full transition-colors cursor-pointer shrink-0 ${notifRecurring ? "bg-primary" : "bg-secondary border border-border"}`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifRecurring ? "bg-primary" : "bg-muted"}`}
                     >
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifRecurring ? "translate-x-5" : "translate-x-0.5"}`} />
+                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifRecurring ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
                 </div>
