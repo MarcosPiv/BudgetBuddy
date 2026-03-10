@@ -24,6 +24,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts"
 import { useApp } from "@/lib/app-context"
 import type { Transaction } from "@/lib/app-context"
@@ -60,6 +63,20 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
           <span className="font-medium text-foreground tabular-nums">{fmtArs(p.value)}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+const PIE_COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#a855f7", "#10b981", "#f97316"]
+
+// ── Pie tooltip ────────────────────────────────────────────────────────────────
+function PieTooltip({ active, payload }: { active?: boolean; payload?: { value: number; payload: { name: string } }[] }) {
+  if (!active || !payload?.length) return null
+  const item = payload[0]
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
+      <p className="font-semibold text-foreground">{item.payload.name}</p>
+      <p className="text-muted-foreground mt-0.5">{fmtArs(item.value)}</p>
     </div>
   )
 }
@@ -165,6 +182,25 @@ export function AnalyticsPage() {
 
   const hasData = trendData.some(d => d.gastos > 0 || d.ingresos > 0)
 
+  // ── Category breakdown ────────────────────────────────────────────────────
+  const categoryData = useMemo(() => {
+    const map = new Map<string, number>()
+    transactions
+      .filter(tx => tx.type === "expense")
+      .forEach(tx => {
+        const cat = tx.category || "Sin categoría"
+        map.set(cat, (map.get(cat) ?? 0) + toArs(tx))
+      })
+    const sorted = Array.from(map.entries())
+      .map(([name, value]) => ({ name, value: Math.round(value) }))
+      .sort((a, b) => b.value - a.value)
+    if (sorted.length <= 7) return sorted
+    const top = sorted.slice(0, 6)
+    const othersVal = sorted.slice(6).reduce((a, c) => a + c.value, 0)
+    return [...top, { name: "Otros", value: Math.round(othersVal) }]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, usdRate])
+
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalRecurringArs = recurringTemplates
     .filter(t => t.type === "expense")
@@ -250,6 +286,64 @@ export function AnalyticsPage() {
           ) : (
             <div className="h-[210px] flex items-center justify-center text-sm text-muted-foreground">
               Todavía no hay suficientes datos para mostrar la tendencia.
+            </div>
+          )}
+        </motion.div>
+
+        {/* ── Category Breakdown (Donut) ──────────────────────────── */}
+        <motion.div
+          className="rounded-2xl border border-border bg-card p-4"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+        >
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+            Gastos por categoría
+          </p>
+
+          {categoryData.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={56}
+                    outerRadius={86}
+                    paddingAngle={2}
+                    dataKey="value"
+                    strokeWidth={0}
+                  >
+                    {categoryData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Legend */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {categoryData.map((item, i) => {
+                  const total = categoryData.reduce((a, c) => a + c.value, 0)
+                  const pct = total > 0 ? Math.round((item.value / total) * 100) : 0
+                  return (
+                    <div key={item.name} className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
+                      />
+                      <span className="text-xs text-muted-foreground truncate flex-1">{item.name}</span>
+                      <span className="text-xs font-medium text-foreground tabular-nums shrink-0">{pct}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+              Registrá gastos para ver el desglose por categoría.
             </div>
           )}
         </motion.div>

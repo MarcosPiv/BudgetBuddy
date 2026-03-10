@@ -102,6 +102,7 @@ export function SettingsPage() {
   const [localExMode, setLocalExMode] = useState<ExchangeRateMode>(exchangeRateMode)
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
+  const [keyError, setKeyError] = useState<string | null>(null)
 
   // Derived: key value and setter for the currently selected provider
   const displayedKey =
@@ -133,6 +134,17 @@ export function SettingsPage() {
   ]
 
   const handleSave = async () => {
+    // Block save if the API key has the wrong format for the selected provider
+    const prefix = KEY_PREFIXES[localProvider]
+    const activeKey =
+      localProvider === "claude" ? localKeysClaude :
+      localProvider === "openai" ? localKeysOpenAI : localKeysGemini
+    if (activeKey && !activeKey.startsWith(prefix)) {
+      setKeyError(`La clave de ${activeProviderMeta.label} debe empezar con "${prefix}"`)
+      return
+    }
+    setKeyError(null)
+
     const budget = parseInt(localBudget) || 200000
     let newRate = parseFloat(localUsdRate) || 1350
 
@@ -490,6 +502,7 @@ export function SettingsPage() {
                         setLocalProvider(p.id)
                         setEditingKey(false)
                         setNewKeyValue("")
+                        setKeyError(null)
                       }}
                       className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all cursor-pointer ${
                         isSelected
@@ -600,6 +613,20 @@ export function SettingsPage() {
                 Tus claves se almacenan en tu cuenta de Supabase, cifradas en reposo.
               </p>
             </div>
+
+            <AnimatePresence>
+              {keyError && (
+                <motion.p
+                  className="text-xs text-destructive text-center -mt-1"
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {keyError}
+                </motion.p>
+              )}
+            </AnimatePresence>
 
             <Button
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-11 font-semibold rounded-xl mt-2 cursor-pointer transition-all"
