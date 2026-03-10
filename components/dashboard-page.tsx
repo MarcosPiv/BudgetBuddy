@@ -30,6 +30,8 @@ import {
   DollarSign,
   StickyNote,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Download,
   Search,
   CalendarIcon,
@@ -401,6 +403,7 @@ export function DashboardPage() {
   const [newTxDate, setNewTxDate] = useState<Date | null>(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showCategoryChart, setShowCategoryChart] = useState(false)
+  const [showAllTx, setShowAllTx] = useState(false)
 
   // Cotizaciones en vivo para el selector de tipo de cambio en el formulario
   const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
@@ -475,6 +478,13 @@ export function DashboardPage() {
       (tx.observation?.toLowerCase().includes(q) ?? false)
     )
   }, [filteredTransactions, searchQuery])
+
+  // Reset "ver más" whenever the visible set changes
+  useEffect(() => { setShowAllTx(false) }, [filteredTransactions, searchQuery])
+
+  const TX_PAGE = 6
+  const visibleTransactions = showAllTx ? displayedTransactions : displayedTransactions.slice(0, TX_PAGE)
+  const hasMoreTx = displayedTransactions.length > TX_PAGE
 
   // Expenses broken down by category for the current period
   const categoryBreakdown = useMemo(() => {
@@ -1423,7 +1433,7 @@ export function DashboardPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 <AnimatePresence mode="popLayout">
-                  {displayedTransactions.map((tx) => {
+                  {visibleTransactions.map((tx) => {
                     const Icon = iconMap[tx.icon] || ShoppingCart
                     const isIncome = tx.type === "income"
                     const isExpanded = expandedTx === tx.id
@@ -1575,6 +1585,27 @@ export function DashboardPage() {
                     )
                   })}
                 </AnimatePresence>
+
+                {/* Ver más / Ver menos */}
+                {hasMoreTx && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTx(v => !v)}
+                    className="w-full mt-1 py-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {showAllTx ? (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                        Ver menos
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        Ver {displayedTransactions.length - TX_PAGE} movimientos más
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             )}
           </motion.div>
