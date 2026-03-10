@@ -730,37 +730,63 @@ export function DashboardPage() {
   }
 
   const buildFinancialContext = (): string => {
-    const expensesByCategory = filteredTransactions
-      .filter(t => t.type === "expense")
-      .reduce<Record<string, number>>((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + toArs(t)
-        return acc
-      }, {})
-    const topCategories = Object.entries(expensesByCategory)
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    // Annual transactions (current year)
+    const yearTxs = transactions.filter(t => new Date(t.date).getFullYear() === currentYear)
+    // Current month transactions
+    const monthTxs = transactions.filter(t => {
+      const d = new Date(t.date)
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth
+    })
+
+    const sumExpenses = (txs: typeof transactions) =>
+      txs.filter(t => t.type === "expense").reduce((a, t) => a + toArs(t), 0)
+    const sumIncome = (txs: typeof transactions) =>
+      txs.filter(t => t.type === "income").reduce((a, t) => a + toArs(t), 0)
+
+    // Top categories for the year
+    const catMap: Record<string, number> = {}
+    yearTxs.filter(t => t.type === "expense").forEach(t => {
+      catMap[t.category] = (catMap[t.category] || 0) + toArs(t)
+    })
+    const topCategories = Object.entries(catMap)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
+      .slice(0, 5)
       .map(([cat, amt]) => `${cat}: ${formatCurrency(amt)}`)
       .join(", ")
-    const txLines = filteredTransactions
-      .slice(0, 50)
+
+    // Last 60 transactions (most recent first)
+    const recentTxs = [...transactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 60)
+    const txLines = recentTxs
       .map(t => {
-        const dateStr = t.date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+        const dateStr = new Date(t.date).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
         const typeStr = t.type === "expense" ? "Gasto" : "Ingreso"
         return `${dateStr} · ${typeStr} · ${t.description} · ${t.category} · ${formatCurrency(toArs(t))}`
       })
       .join("\n")
 
     const lines = [
-      `Período: ${filterLabels[timeFilter]}`,
-      `Ingresos totales: ${formatCurrency(totalIncome)}`,
-      `Gastos totales: ${formatCurrency(totalExpenses)}`,
-      `Balance: ${formatCurrency(balance)}`,
+      `=== RESUMEN ANUAL ${currentYear} ===`,
+      `Ingresos año: ${formatCurrency(sumIncome(yearTxs))}`,
+      `Gastos año: ${formatCurrency(sumExpenses(yearTxs))}`,
+      `Balance año: ${formatCurrency(sumIncome(yearTxs) - sumExpenses(yearTxs))}`,
+      `Transacciones en el año: ${yearTxs.length}`,
+      topCategories ? `Top categorías de gastos (año): ${topCategories}` : null,
+      ``,
+      `=== MES ACTUAL ===`,
+      `Ingresos mes: ${formatCurrency(sumIncome(monthTxs))}`,
+      `Gastos mes: ${formatCurrency(sumExpenses(monthTxs))}`,
       isExpensesOnly && monthlyBudget ? `Presupuesto mensual: ${formatCurrency(monthlyBudget)}` : null,
-      topCategories ? `Top categorías de gastos: ${topCategories}` : null,
-      `Transacciones en el período: ${filteredTransactions.length}`,
-      txLines ? `\nDetalle de transacciones:\n${txLines}` : null,
+      ``,
+      `=== ÚLTIMAS ${recentTxs.length} TRANSACCIONES ===`,
+      txLines,
     ]
-    return lines.filter(Boolean).join("\n")
+    return lines.filter(v => v !== null).join("\n")
   }
 
   const handleChatSubmit = async (e: React.FormEvent) => {

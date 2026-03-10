@@ -98,14 +98,33 @@ function extractAndValidate(raw: string): ParsedTransaction {
   return parsed
 }
 
+// Key prefix validation — called before any network request to fail fast
+const KEY_PREFIXES: Record<AIProvider, string> = {
+  claude: "sk-ant-",
+  openai: "sk-",
+  gemini: "AIza",
+}
+
+function validateKeyFormat(provider: AIProvider, key: string): void {
+  if (!key.startsWith(KEY_PREFIXES[provider]))
+    throw new Error("API key inválida. Verificá tu clave en Ajustes.")
+}
+
 function translateError(msg: string): string {
-  if (msg.includes("API key") || msg.includes("api_key") || msg.includes("401") || msg.includes("403") || msg.includes("invalid_api_key") || msg.includes("Invalid API key") || msg.includes("INVALID_ARGUMENT"))
+  const m = msg.toLowerCase()
+  if (
+    m.includes("api key") || m.includes("api_key") || m.includes("api-key") ||
+    m.includes("401") || m.includes("403") ||
+    m.includes("invalid_api_key") || m.includes("authentication_error") ||
+    m.includes("unauthorized") || m.includes("invalid_argument") ||
+    m.includes("not valid") || (m.includes("invalid") && m.includes("key"))
+  )
     return "API key inválida. Verificá tu clave en Ajustes."
-  if (msg.includes("rate limit") || msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED"))
+  if (m.includes("rate limit") || m.includes("429") || m.includes("quota") || m.includes("resource_exhausted"))
     return "Límite de requests alcanzado. Esperá unos segundos."
-  if (msg.includes("MODEL_NOT_FOUND") || msg.includes("model not found") || msg.includes("not found for API"))
+  if (m.includes("model_not_found") || m.includes("model not found") || m.includes("not found for api"))
     return "Modelo no disponible. Verificá tu plan de API."
-  if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed to fetch"))
+  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch"))
     return "Error de conexión. Revisá tu internet."
   return msg
 }
@@ -134,6 +153,7 @@ async function transcribeWithWhisper(apiKey: string, file: File): Promise<string
 
 // ── Claude (Anthropic) ────────────────────────────────────────────────────────
 async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  validateKeyFormat("claude", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
 
@@ -183,6 +203,7 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
 }
 
 async function callClaudeChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  validateKeyFormat("claude", apiKey)
   if (audioAttachment) {
     throw new Error("Claude no soporta audio en el chat. Cambiá a Gemini u OpenAI en Ajustes.")
   }
@@ -215,6 +236,7 @@ async function callClaudeChat(apiKey: string, context: string, history: ChatTurn
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
 async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  validateKeyFormat("openai", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
 
@@ -268,6 +290,7 @@ async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachm
 }
 
 async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  validateKeyFormat("openai", apiKey)
   let finalHistory = history
   if (audioAttachment?.file) {
     const transcript = await transcribeWithWhisper(apiKey, audioAttachment.file)
@@ -306,6 +329,7 @@ async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn
 
 // ── Gemini (Google) ───────────────────────────────────────────────────────────
 async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+  validateKeyFormat("gemini", apiKey)
   const parts: object[] = []
 
   // Add all attachments (images + audio) as inline_data
@@ -344,6 +368,7 @@ async function callGemini(apiKey: string, input: string, attachments?: AIAttachm
 }
 
 async function callGeminiChat(apiKey: string, context: string, history: ChatTurn[], audioAttachment?: AIAttachment): Promise<string> {
+  validateKeyFormat("gemini", apiKey)
   const contents = history.map((m, i) => {
     const isLast = i === history.length - 1
     if (isLast && audioAttachment) {

@@ -28,6 +28,12 @@ function fmt(n: number | null | undefined) {
   return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
 }
 
+const KEY_PREFIXES: Record<AIProvider, string> = {
+  claude: "sk-ant-",
+  openai: "sk-",
+  gemini: "AIza",
+}
+
 const AI_PROVIDERS: Array<{
   id: AIProvider
   label: string
@@ -85,6 +91,7 @@ export function SettingsPage() {
   } = useApp()
 
   const [editingKey, setEditingKey] = useState(false)
+  const [newKeyValue, setNewKeyValue] = useState("")
   const [localProvider, setLocalProvider] = useState<AIProvider>(aiProvider)
   const [localKeysClaude, setLocalKeysClaude] = useState(apiKeyClaude)
   const [localKeysOpenAI, setLocalKeysOpenAI] = useState(apiKeyOpenAI)
@@ -157,6 +164,7 @@ export function SettingsPage() {
     })
 
     setEditingKey(false)
+    setNewKeyValue("")
     setSaved(true)
     setTimeout(() => {
       setSaved(false)
@@ -481,6 +489,7 @@ export function SettingsPage() {
                       onClick={() => {
                         setLocalProvider(p.id)
                         setEditingKey(false)
+                        setNewKeyValue("")
                       }}
                       className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all cursor-pointer ${
                         isSelected
@@ -520,7 +529,7 @@ export function SettingsPage() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => setEditingKey(true)}
+                      onClick={() => { setEditingKey(true); setNewKeyValue("") }}
                       className="text-xs font-medium text-primary hover:text-primary/80 transition-colors cursor-pointer shrink-0"
                     >
                       Cambiar
@@ -528,27 +537,56 @@ export function SettingsPage() {
                   </div>
                 ) : (
                   /* Input when no key or editing */
-                  <div className="flex gap-2">
-                    <Input
-                      id="providerKey"
-                      type="password"
-                      autoComplete="off"
-                      placeholder={activeProviderMeta.placeholder}
-                      value={editingKey ? "" : displayedKey}
-                      onChange={(e) => handleKeyChange(e.target.value)}
-                      onFocus={() => { if (editingKey) handleKeyChange("") }}
-                      className="flex-1 bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 font-mono text-sm"
-                    />
-                    {editingKey && (
-                      <button
-                        type="button"
-                        onClick={() => setEditingKey(false)}
-                        className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 px-2"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
+                  (() => {
+                    const prefix = KEY_PREFIXES[localProvider]
+                    const isValid = newKeyValue.startsWith(prefix) && newKeyValue.length > prefix.length + 8
+                    const isWrongFormat = newKeyValue.length > 3 && !newKeyValue.startsWith(prefix)
+                    return (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Input
+                              id="providerKey"
+                              type="text"
+                              autoComplete="off"
+                              spellCheck={false}
+                              placeholder={activeProviderMeta.placeholder}
+                              value={newKeyValue}
+                              onChange={(e) => {
+                                const v = e.target.value.trim()
+                                setNewKeyValue(v)
+                                handleKeyChange(v)
+                              }}
+                              className={`font-mono text-sm h-11 bg-secondary/50 text-foreground placeholder:text-muted-foreground/50 pr-8 transition-colors ${
+                                isValid
+                                  ? "border-primary/60 focus-visible:ring-primary/40"
+                                  : isWrongFormat
+                                  ? "border-destructive/60 focus-visible:ring-destructive/40"
+                                  : "border-border"
+                              }`}
+                            />
+                            {isValid && (
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs">✓</span>
+                            )}
+                          </div>
+                          {editingKey && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingKey(false); setNewKeyValue("") }}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 px-2"
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
+                        {isWrongFormat && (
+                          <p className="text-[11px] text-destructive">
+                            Las claves de {activeProviderMeta.label} empiezan con <span className="font-mono">{prefix}</span>
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()
                 )}
 
                 <p className="text-[11px] text-muted-foreground">{activeProviderMeta.hint}</p>
