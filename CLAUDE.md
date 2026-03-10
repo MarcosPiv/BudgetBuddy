@@ -26,6 +26,7 @@ No test suite is configured.
 - `dashboard` → `components/dashboard-page.tsx` (main feature)
 - `settings` → `components/settings-page.tsx`
 - `profile` → `components/profile-page.tsx`
+- `analytics` → `components/analytics-page.tsx` (trend chart, donut chart, recurring transactions)
 
 There is also a standalone Next.js page (outside the SPA view router):
 - `/reset-password` → `app/reset-password/page.tsx` — handles the Supabase `PASSWORD_RECOVERY` event after user clicks the reset link in their email
@@ -45,6 +46,8 @@ All global state lives in `lib/app-context.tsx` (React Context). Key state field
 - `timeFilter` — `week | month | year | custom`
 - `customRange` — `{ from: Date; to: Date }`
 
+`currentViewRef` (useRef) mirrors `currentView` and is used inside async auth callbacks to avoid stale-closure bugs. The view is also persisted to `sessionStorage` (`bb_view`) so it survives tab-discard/remount.
+
 ### Core Data Model
 
 ```typescript
@@ -61,6 +64,7 @@ Transaction {
   amountUsd?: number
   txRate?: number             // ARS rate locked at the moment of the transaction — immutable
   exchangeRateType?: "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL" | null
+  isRecurring?: boolean       // marks transaction as a monthly fixed expense/income
 }
 ```
 
@@ -72,13 +76,14 @@ Auth and data are fully backed by Supabase (project `budgetbuddy`, region `sa-ea
 
 **Tables:**
 - `profiles` — per-user settings: `user_name`, `monthly_budget`, `profile_mode`, `exchange_rate_mode`, `usd_rate`, `ai_provider`, `api_key` (Claude), `api_key_openai`, `api_key_gemini`
-- `transactions` — all transaction fields in snake_case, `user_id` FK with RLS
+- `transactions` — all transaction fields in snake_case, `user_id` FK with RLS; includes `is_recurring boolean DEFAULT false`
 
 **Auth flows:**
 - Email/password signup + login via `supabase.auth.signInWithPassword` / `signUp`
 - Email confirmation disabled by default during development (toggle in Supabase Dashboard → Auth → Providers → Email)
 - Password reset: `resetPasswordForEmail` with `redirectTo: {origin}/reset-password` → user lands on `/reset-password` page which catches `PASSWORD_RECOVERY` event
 - `onAuthStateChange` listener in `AppProvider`: on `PASSWORD_RECOVERY` sets `isPasswordRecovery = true` and navigates to `auth`; on sign-in loads profile + transactions and navigates to `dashboard`
+- Navigation guard: `AUTHENTICATED_VIEWS` constant + `currentViewRef` prevents redirect-to-dashboard on tab return / token refresh events
 
 **Stale-closure pattern:** `saveProfile()` accepts an optional `overrides` object. Always pass fresh values directly to avoid reading stale state from React closures:
 ```typescript
@@ -99,10 +104,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
   - Parses Blue, Oficial, Tarjeta, MEP
   - Auto-refresh every 5 minutes when `enabled: true`
   - Returns `{ rates, loading, error, lastUpdated, refresh }`
-- `components/ui/exchange-widget.tsx` — collapsible dashboard panel showing live rates
-  - User can tap a rate card to set it as the active `usdRate`
-  - Animated price flash on value change (green/red)
-  - Header uses `<div role="button">` (not `<button>`) to avoid nested button DOM error
 - Magic Bar (bottom input) — when currency is USD, shows a horizontal chip selector:
   - Chips display live rates from DolarAPI inline
   - Selecting "Manual" expands a smooth-height input for a custom rate
@@ -115,49 +116,82 @@ Three LLM providers are supported. The active provider is selected in Settings:
 - **OpenAI** (GPT-4o) — key stored in `api_key_openai` DB column
 - **Gemini** (Google) — key stored in `api_key_gemini` DB column
 
-`apiKey` in context is a computed value: `aiProvider === "claude" ? apiKeyClaude : aiProvider === "openai" ? apiKeyOpenAI : apiKeyGemini`. The dashboard checks `apiKey.trim()` before processing Magic Bar input — if empty, shows an error instead of adding a fake transaction.
+`apiKey` in context is a computed value: `aiProvider === "claude" ? apiKeyClaude : aiProvider === "openai" ? apiKeyOpenAI : apiKeyGemini`. The dashboard checks `apiKey.trim()` before processing Magic Bar input.
+
+**API key validation:** `lib/ai.ts` defines `KEY_PREFIXES` (`sk-ant-`, `sk-`, `AIza`) and calls `validateKeyFormat()` before every API call — throws immediately with a user-friendly message instead of a network error. Settings page also validates on save and blocks if format is wrong.
+
+### Theme System
+
+- `next-themes` with `attribute="class"`, `defaultTheme="dark"`, `storageKey="bb_theme"`
+- Dark theme: defined in `:root` (globals.css) — near-black background, emerald primary, violet accent
+- Light theme: `.light` class override — "Sage Morning" palette with mint-tinted background (`oklch(0.95 0.018 155)`), white cards, emerald darkened to `0.52` for contrast
+- Theme transition: `.theme-transitioning` class applied briefly via JS (`handleThemeChange` in settings) adds `!important` color transitions to all elements, overriding Tailwind utilities for a uniform 0.45s crossfade
+- Toggle: Sun/Moon pill in Settings page
+
+### Notifications (PWA)
+
+- `hooks/use-notifications.ts` — `requestPermission()` + `showNotification()` via `ServiceWorkerRegistration.showNotification()` (works when PWA is in background)
+- `components/notification-manager.tsx` — renders null, wires up 3 schedulers:
+  - **Daily reminder**: `setTimeout` to configured time, checks `bb_notif_last_daily` to avoid double-fire
+  - **Budget alert**: fires when monthly expenses ≥ 90% of budget (once per month, keyed by `bb_notif_budget_month`)
+  - **Recurring reminder**: fires on the 1st of each month if user has recurring transactions
+- Settings toggles: 3 toggles + time picker in Settings page, stored in `localStorage` (`bb_notif_daily`, `bb_notif_daily_time`, `bb_notif_budget`, `bb_notif_recurring`)
+- `public/sw.js` handles `push` and `notificationclick` events
+
+### Transaction List UX
+
+- **Pagination**: shows last 6 by default, "Ver N más" button below. Resets on filter/search change. State: `showAllTx` + `TX_PAGE = 6` + `visibleTransactions` slice.
+- **Swipe gestures** (mobile): each card is wrapped in `motion.div` with `drag="x"` + `dragSnapToOrigin`. Swiping right >75px triggers edit, left >75px triggers delete. Action hints (Pencil/Trash) are revealed via absolute-positioned background. `dragActiveRef` (useRef) prevents swipe from triggering the card's click/expand handler.
+- **Long-press** (mobile): 500ms hold shows edit/delete row below card.
+- **Hover buttons** (desktop): Pencil + Trash icons appear on hover.
+- **Search**: filters by description, category, observation.
+- **Recurring**: `isRecurring` flag on transaction; managed in Analytics page.
 
 ### UI Stack
 
 - **shadcn/ui** ("new-york" style) — components in `components/ui/`
 - **Tailwind CSS v4** with CSS custom properties for theming (oklch color format)
 - **Radix UI** primitives underneath shadcn
-- **Framer Motion** for all animations (accordion, page transitions, micro-interactions)
-- **Recharts** for expense charts
+- **Framer Motion** for all animations (accordion, page transitions, swipe gestures, micro-interactions)
+- **Recharts** for charts (LineChart trend, PieChart category breakdown)
 - **Lucide React** for icons
-- Dark mode via `next-themes`
+- **next-themes** for dark/light mode
+- **Sonner** for toast notifications
 
 ### File Structure (key files)
 
 ```
 app/
-  page.tsx                    # Root, AppProvider wrapper, SPA view router
-  layout.tsx                  # PWA meta, manifest link, PwaRegister
-  globals.css                 # Tailwind v4 theme tokens (oklch) + mobile globals
+  page.tsx                    # Root, AppProvider + NotificationManager, SPA view router
+  layout.tsx                  # ThemeProvider, PWA meta, manifest link, PwaRegister, Toaster
+  globals.css                 # Tailwind v4 theme tokens (oklch) + .light palette + .theme-transitioning
   reset-password/
     page.tsx                  # Standalone page for password recovery flow
 components/
-  dashboard-page.tsx          # Main view: header, filters, summary, tx list, magic bar, chat
-  settings-page.tsx           # AI provider selector, exchange rate config, profile mode
+  dashboard-page.tsx          # Main view: header, filters, summary, tx list (swipe), magic bar, chat
+  settings-page.tsx           # Theme toggle, notifications, AI provider, exchange rate, profile mode
+  analytics-page.tsx          # Trend chart (LineChart), category donut (PieChart), recurring templates
   auth-page.tsx               # Login, register, forgot password flows
   landing-page.tsx            # Landing + PWA install button
   profile-page.tsx            # Name change, password change
+  notification-manager.tsx    # Renders null — schedules push notifications
   pwa-register.tsx            # Service worker registration (client component)
+  theme-provider.tsx          # next-themes ThemeProvider wrapper
   ui/
-    exchange-widget.tsx       # Collapsible live rate panel for dashboard
     ... (shadcn components)
 hooks/
   use-exchange-rate.ts        # DolarAPI integration hook
+  use-notifications.ts        # Notification permission + showNotification via SW
   use-mobile.ts
   use-toast.ts
 lib/
   app-context.tsx             # Global React Context, all types, Supabase data loaders
-  ai.ts                       # callAI() + callAIChat() — Claude / OpenAI / Gemini
+  ai.ts                       # callAI() + callAIChat() — Claude / OpenAI / Gemini + key validation
   supabase.ts                 # Supabase client (reads from env vars)
   utils.ts
 public/
   manifest.json               # Web App Manifest
-  sw.js                       # Service worker
+  sw.js                       # Service worker: cache, push, notificationclick
   icon.svg                    # App icon
   icon-maskable.svg           # Maskable icon for Android adaptive icons
 ```
@@ -165,25 +199,23 @@ public/
 ### PWA
 
 The app is installable as a Progressive Web App:
-- `public/manifest.json` — name, colors, orientation, SVG icons (`icon.svg` + `icon-maskable.svg`)
-- `public/sw.js` — service worker: caches app shell + `_next/static` assets; never caches external API calls (Supabase, Anthropic, etc.); network-first for navigation
-- `components/pwa-register.tsx` — registers the SW via `useEffect` on mount; rendered in `app/layout.tsx`
-- `app/layout.tsx` — `viewport.viewportFit: 'cover'` (safe-area for iPhone notch), `metadata.manifest`, `appleWebApp` meta
-- `components/landing-page.tsx` — listens for `beforeinstallprompt` (Android/Chrome) and shows an install button; iOS users see a hint "Compartir → Agregar a pantalla de inicio"
+- `public/manifest.json` — name, colors, orientation, SVG icons
+- `public/sw.js` — caches app shell + `_next/static`; push + notificationclick handlers; network-first for navigation
+- `components/pwa-register.tsx` — registers the SW via `useEffect` on mount
+- `components/notification-manager.tsx` — schedules in-app and background notifications
+- `components/landing-page.tsx` — `beforeinstallprompt` handler for Android install button; iOS hint for Safari
 
 ### Logout (signOut)
 
 `signOut()` in `app-context.tsx` is **synchronous and optimistic**:
-1. Immediately clears all local state (`user`, `transactions`, keys) and navigates to `"landing"` — UI responds instantly
+1. Immediately clears all local state and navigates to `"landing"` — UI responds instantly
 2. Calls `supabase.auth.signOut()` fire-and-forget in the background
-3. `onAuthStateChange` fires `SIGNED_OUT` and runs cleanup (now a no-op since state is already cleared)
-
-This avoids UI freeze on mobile/PWA when the network is slow.
+3. Clears `sessionStorage` view key
 
 ### Custom Range Calendar
 
 The inline calendar (shown when clicking "Personalizado" in the filter bar) has:
-- **Quick presets** scrollable chip row: Hoy, Ayer, 7 días, 30 días, Este mes, Mes ant. — clicking any preset applies immediately and closes the calendar
+- **Quick presets** scrollable chip row: Hoy, Ayer, 7 días, 30 días, Este mes, Mes ant.
 - **Selected range preview**: shows `fromDate → toDate` and number of days
 - **Calendar picker** for arbitrary ranges + "Aplicar rango" button
 - `applyRange(from, to)` helper ensures `to` is always end-of-day (23:59:59.999)

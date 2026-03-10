@@ -1,4 +1,4 @@
-const CACHE = 'budgetbuddy-v2'
+const CACHE = 'budgetbuddy-v3'
 
 // App shell to pre-cache
 const SHELL = ['/', '/manifest.json', '/icon.svg', '/icon-maskable.svg']
@@ -18,6 +18,32 @@ self.addEventListener('activate', (event) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
+  )
+})
+
+// ── Push notifications ────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  const data = event.data?.json() ?? {}
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? 'BudgetBuddy', {
+      body: data.body ?? '',
+      icon: '/icon.svg',
+      badge: '/icon-maskable.svg',
+      tag: data.tag ?? 'budgetbuddy',
+      renotify: true,
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ('focus' in client) return client.focus()
+      }
+      return clients.openWindow('/')
+    })
   )
 })
 

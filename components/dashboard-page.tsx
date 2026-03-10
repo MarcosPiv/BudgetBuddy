@@ -396,6 +396,7 @@ export function DashboardPage() {
   })
   const [longPressId, setLongPressId] = useState<string | null>(null)
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dragActiveRef = useRef(false)
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null)
 
   // Search, export, date picker, category chart
@@ -1445,12 +1446,42 @@ export function DashboardPage() {
                         initial={{ opacity: 0, x: -16 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 16 }}
-                        className="group"
+                        className="group relative"
                       >
+                        {/* Swipe action hints — revealed as card slides */}
+                        <div className="absolute inset-0 flex items-center justify-between px-5 rounded-2xl pointer-events-none select-none">
+                          <div className="flex items-center gap-1.5 text-primary">
+                            <Pencil className="w-4 h-4" />
+                            <span className="text-xs font-medium">Editar</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-destructive">
+                            <span className="text-xs font-medium">Eliminar</span>
+                            <Trash2 className="w-4 h-4" />
+                          </div>
+                        </div>
+
+                        {/* Draggable card */}
+                        <motion.div
+                          drag="x"
+                          dragSnapToOrigin
+                          dragConstraints={{ left: -110, right: 110 }}
+                          dragElastic={0.08}
+                          dragMomentum={false}
+                          onDragStart={() => {
+                            dragActiveRef.current = true
+                            if (lpTimerRef.current) clearTimeout(lpTimerRef.current)
+                            setLongPressId(null)
+                          }}
+                          onDragEnd={(_, info) => {
+                            setTimeout(() => { dragActiveRef.current = false }, 50)
+                            if (info.offset.x < -75) setDeletingTxId(tx.id)
+                            else if (info.offset.x > 75) openEdit(tx)
+                          }}
+                        >
                         {/* Card row */}
                         <div
                           className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 hover:bg-secondary/30 active:bg-secondary/50 transition-colors cursor-pointer text-left select-none"
-                          onClick={() => { if (longPressId !== tx.id) setExpandedTx(isExpanded ? null : tx.id) }}
+                          onClick={() => { if (dragActiveRef.current || longPressId === tx.id) return; setExpandedTx(isExpanded ? null : tx.id) }}
                           onTouchStart={() => handleTouchStart(tx.id)}
                           onTouchEnd={handleTouchEnd}
                           onTouchMove={handleTouchEnd}
@@ -1523,6 +1554,7 @@ export function DashboardPage() {
                             />
                           )}
                         </div>
+                        </motion.div>{/* end draggable */}
 
                         {/* Mobile long-press action row */}
                         <AnimatePresence>
