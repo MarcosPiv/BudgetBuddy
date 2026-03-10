@@ -168,7 +168,23 @@ app/
   reset-password/
     page.tsx                  # Standalone page for password recovery flow
 components/
-  dashboard-page.tsx          # Main view: header, filters, summary, tx list (swipe), magic bar, chat
+  dashboard-page.tsx          # Orchestrator: all shared state + handlers, compone layout (~889 líneas)
+  dashboard/                  # Sub-componentes del dashboard (extraídos del orquestador)
+    shared.tsx                # Constantes (iconMap, VALID_CATEGORIES), tipos (ChatMessage, Attachment),
+                              # utilidades (formatDate, formatDateShort, fileToBase64, compressImage)
+    exchange-type-badge.tsx   # Badge de tipo de cambio (Blue / Tarjeta / Oficial / MEP / Manual)
+    receipt-image.tsx         # Imagen de comprobante con URL firmada desde Supabase Storage
+    onboarding-overlay.tsx    # Overlay de bienvenida con pasos animados (3 steps)
+    swipe-card.tsx            # Wrapper de swipe con useMotionValue/useTransform; hints de editar/eliminar
+    delete-dialog.tsx         # AlertDialog de confirmación de eliminación
+    camera-modal.tsx          # Modal de cámara en vivo para capturar tickets
+    summary-cards.tsx         # Tarjetas de resumen: modo presupuesto o ingresos+gastos
+    category-chart.tsx        # Breakdown colapsable de gastos por categoría con barras animadas
+    filter-bar.tsx            # Chips de filtro temporal (semana/mes/año/custom) + calendario inline
+    edit-dialog.tsx           # Formulario completo de edición de transacción + exporta EditForm type
+    transaction-list.tsx      # Lista swipeable con búsqueda, expand, long-press y paginación
+    magic-bar.tsx             # Barra de entrada multimodal fija (texto, foto, audio, nota, fecha)
+    chat-panel.tsx            # Sidebar del asistente IA con historial y grabación de voz
   settings-page.tsx           # Theme toggle, notifications, AI provider, exchange rate, profile mode
   analytics-page.tsx          # Trend chart (LineChart), category donut (PieChart), recurring templates
   auth-page.tsx               # Login, register, forgot password flows
@@ -195,6 +211,20 @@ public/
   icon.svg                    # App icon
   icon-maskable.svg           # Maskable icon for Android adaptive icons
 ```
+
+### Dashboard component architecture
+
+`components/dashboard-page.tsx` es el orquestador: contiene todo el estado compartido, los handlers y la composición del layout. No define JSX propio más allá del header sticky y el esqueleto de la página.
+
+Los sub-componentes en `components/dashboard/` son puramente presentacionales o tienen estado local mínimo:
+
+- **`shared.tsx`** — sin JSX, solo exports de constantes/tipos/utilidades usadas por múltiples sub-componentes.
+- **`swipe-card.tsx`** — tiene su propio `useMotionValue`/`useTransform` (no puede ser un hook por las reglas de React), recibe `onDragStart`/`onDragEnd` como callbacks.
+- **`edit-dialog.tsx`** — exporta también el tipo `EditForm` que el orquestador usa para su `useState<EditForm>`.
+- **`transaction-list.tsx`** — recibe `dragActiveRef` y `lpTimerRef` como refs mutables para coordinar el gesto de swipe con el click/expand sin causar re-renders.
+- **`magic-bar.tsx`** — recibe `galleryInputRef` y `cameraInputRef` desde el orquestador para poder hacer `.click()` sobre los inputs ocultos.
+
+El patrón de prop drilling explícito (sin Context) es intencional: cada componente declara exactamente qué necesita, lo que facilita el testing y el rastreo de dependencias.
 
 ### PWA
 

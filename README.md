@@ -35,6 +35,48 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 
 ---
 
+## Estructura del proyecto
+
+```
+app/
+  page.tsx                  # SPA router — renderiza la vista activa
+  layout.tsx                # ThemeProvider, PWA meta, Toaster
+  reset-password/page.tsx   # Ruta standalone para recuperación de contraseña
+components/
+  dashboard-page.tsx        # Orquestador del dashboard (estado + handlers)
+  dashboard/                # Sub-componentes del dashboard
+    shared.tsx              # Constantes, tipos y utilidades compartidas
+    filter-bar.tsx          # Chips de filtro temporal + calendario inline
+    summary-cards.tsx       # Tarjetas de resumen (presupuesto / ingresos+gastos)
+    category-chart.tsx      # Breakdown de gastos por categoría
+    transaction-list.tsx    # Lista swipeable con búsqueda y paginación
+    swipe-card.tsx          # Wrapper de gesto de swipe (editar / eliminar)
+    magic-bar.tsx           # Barra multimodal de entrada (texto, foto, audio)
+    chat-panel.tsx          # Sidebar del asistente IA
+    edit-dialog.tsx         # Formulario de edición de transacción
+    delete-dialog.tsx       # Confirmación de eliminación
+    camera-modal.tsx        # Cámara en vivo para capturar tickets
+    onboarding-overlay.tsx  # Overlay de bienvenida
+    receipt-image.tsx       # Imagen de comprobante desde Supabase Storage
+    exchange-type-badge.tsx # Badge de tipo de cambio
+  settings-page.tsx         # Tema, notificaciones, IA, tipo de cambio
+  analytics-page.tsx        # Gráficos de tendencia y categoría; gastos fijos
+  auth-page.tsx             # Login, registro, recuperación de contraseña
+  landing-page.tsx          # Landing + instalación PWA
+  profile-page.tsx          # Cambio de nombre y contraseña
+hooks/
+  use-exchange-rate.ts      # Cotizaciones en vivo desde DolarAPI
+  use-notifications.ts      # Permisos y envío de notificaciones push
+lib/
+  app-context.tsx           # Estado global (React Context + Supabase)
+  ai.ts                     # callAI() / callAIChat() — Claude, OpenAI, Gemini
+public/
+  sw.js                     # Service worker (cache + push notifications)
+  manifest.json             # Web App Manifest
+```
+
+---
+
 ## Setup local
 
 ```bash
