@@ -16,12 +16,15 @@ import {
   WifiOff,
   RefreshCw,
   CheckCircle2,
+  Sun,
+  Moon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useApp, type ProfileMode, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
+import { useTheme } from "next-themes"
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "—"
@@ -103,6 +106,15 @@ export function SettingsPage() {
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
+
+  const { theme, setTheme } = useTheme()
+
+  const handleThemeChange = (next: string) => {
+    const html = document.documentElement
+    html.classList.add("theme-transitioning")
+    setTheme(next)
+    setTimeout(() => html.classList.remove("theme-transitioning"), 500)
+  }
 
   // Derived: key value and setter for the currently selected provider
   const displayedKey =
@@ -221,6 +233,40 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col gap-5">
+            {/* Appearance toggle */}
+            <div className="flex items-center justify-between">
+              <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                {theme === "light" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                Apariencia
+              </Label>
+              <div className="flex items-center gap-1 rounded-full bg-secondary/70 p-1 border border-border">
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange("dark")}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                    theme === "dark"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Moon className="w-3 h-3" />
+                  Oscuro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange("light")}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                    theme === "light"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Sun className="w-3 h-3" />
+                  Claro
+                </button>
+              </div>
+            </div>
+
             {/* Profile Mode Selector */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm text-muted-foreground">

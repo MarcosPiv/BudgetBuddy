@@ -43,6 +43,79 @@
   --violet-ai-foreground: oklch(0.95 0.005 300);
 }
 
+/* ── Light theme — "Sage Morning" ───────────────────────────────────────── */
+/*
+   Concept: brand-connected sage/mint background instead of generic grey.
+   The very subtle green tint unifies the palette with the emerald primary,
+   reduces harshness vs pure white, and feels modern and fresh.
+
+   Surface hierarchy:
+   · background  oklch(0.95 0.018 155) → light sage workspace
+   · card        oklch(0.99 0.005 155) → near-white panel (clearly elevated)
+   · secondary   oklch(0.88 0.022 155) → mint secondary surface
+   · border      oklch(0.82 0.026 155) → visible mint-tinted border
+
+   Text:
+   · foreground       oklch(0.11 0.025 200) → dark teal-black (pairs with mint)
+   · muted-foreground oklch(0.44 0.020 200) → teal-grey for labels/hints
+
+   Accent colors darkened for accessibility on light backgrounds:
+   · primary  oklch(0.52 0.21 160) → rich emerald, ~4.5:1 on card
+   · accent   oklch(0.50 0.17 300) → violet
+*/
+.light {
+  --background: oklch(0.95 0.018 155);
+  --foreground: oklch(0.11 0.025 200);
+  --card: oklch(0.99 0.005 155);
+  --card-foreground: oklch(0.11 0.025 200);
+  --popover: oklch(0.99 0.005 155);
+  --popover-foreground: oklch(0.11 0.025 200);
+  --primary: oklch(0.52 0.21 160);
+  --primary-foreground: oklch(0.98 0.008 160);
+  --secondary: oklch(0.88 0.022 155);
+  --secondary-foreground: oklch(0.18 0.025 200);
+  --muted: oklch(0.88 0.022 155);
+  --muted-foreground: oklch(0.44 0.020 200);
+  --accent: oklch(0.50 0.17 300);
+  --accent-foreground: oklch(0.98 0.005 300);
+  --destructive: oklch(0.50 0.24 25);
+  --destructive-foreground: oklch(0.98 0.005 25);
+  --border: oklch(0.82 0.026 155);
+  --input: oklch(0.91 0.018 155);
+  --ring: oklch(0.52 0.21 160);
+  --chart-1: oklch(0.52 0.21 160);
+  --chart-2: oklch(0.50 0.17 300);
+  --chart-3: oklch(0.50 0.24 25);
+  --chart-4: oklch(0.62 0.17 85);
+  --chart-5: oklch(0.50 0.15 210);
+  --sidebar: oklch(0.91 0.020 155);
+  --sidebar-foreground: oklch(0.11 0.025 200);
+  --sidebar-primary: oklch(0.52 0.21 160);
+  --sidebar-primary-foreground: oklch(0.98 0.008 160);
+  --sidebar-accent: oklch(0.88 0.022 155);
+  --sidebar-accent-foreground: oklch(0.18 0.025 200);
+  --sidebar-border: oklch(0.82 0.026 155);
+  --sidebar-ring: oklch(0.52 0.21 160);
+  --emerald: oklch(0.52 0.21 160);
+  --emerald-foreground: oklch(0.98 0.008 160);
+  --violet-ai: oklch(0.50 0.17 300);
+  --violet-ai-foreground: oklch(0.98 0.005 300);
+}
+
+/* ── Theme transition — applied briefly via JS on toggle ─────────────────── */
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color     0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    color            0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow       0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    fill             0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    stroke           0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
 @theme inline {
   --font-sans: 'Inter', 'Inter Fallback', sans-serif;
   --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback', monospace;
@@ -129,4 +202,8 @@
   background: oklch(0.17 0.01 260 / 0.6);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+
+.light .glass {
+  background: oklch(0.98 0.008 155 / 0.84);
 }
