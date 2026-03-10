@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useMemo } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion"
 import {
   Sparkles,
   Send,
@@ -309,6 +309,61 @@ function OnboardingOverlay({ onDone }: { onDone: () => void }) {
         )}
       </motion.div>
     </motion.div>
+  )
+}
+
+// ── Swipeable card wrapper ────────────────────────────────────────────────────
+function SwipeCard({
+  onDragStart,
+  onDragEnd,
+  children,
+}: {
+  onDragStart: () => void
+  onDragEnd: (swipedLeft: boolean, swipedRight: boolean) => void
+  children: React.ReactNode
+}) {
+  const x = useMotionValue(0)
+  const editOpacity   = useTransform(x, [20, 85], [0, 1])
+  const deleteOpacity = useTransform(x, [-85, -20], [1, 0])
+
+  return (
+    <div className="relative">
+      {/* Edit hint — fades in when swiping right */}
+      <motion.div
+        className="absolute inset-0 flex items-center justify-start px-5 rounded-2xl pointer-events-none"
+        style={{ opacity: editOpacity }}
+      >
+        <div className="flex items-center gap-1.5 text-primary">
+          <Pencil className="w-4 h-4" />
+          <span className="text-xs font-medium">Editar</span>
+        </div>
+      </motion.div>
+
+      {/* Delete hint — fades in when swiping left */}
+      <motion.div
+        className="absolute inset-0 flex items-center justify-end px-5 rounded-2xl pointer-events-none"
+        style={{ opacity: deleteOpacity }}
+      >
+        <div className="flex items-center gap-1.5 text-destructive">
+          <span className="text-xs font-medium">Eliminar</span>
+          <Trash2 className="w-4 h-4" />
+        </div>
+      </motion.div>
+
+      {/* Draggable layer */}
+      <motion.div
+        drag="x"
+        style={{ x }}
+        dragSnapToOrigin
+        dragConstraints={{ left: -110, right: 110 }}
+        dragElastic={0.08}
+        dragMomentum={false}
+        onDragStart={onDragStart}
+        onDragEnd={(_, info) => onDragEnd(info.offset.x < -75, info.offset.x > 75)}
+      >
+        {children}
+      </motion.div>
+    </div>
   )
 }
 
@@ -1394,7 +1449,7 @@ export function DashboardPage() {
                   )}
                   {filteredTransactions.length > 0 && (
                     <p className="md:hidden text-[10px] text-muted-foreground/50">
-                      Pulsá para editar o eliminar
+                      Deslizá para editar o eliminar
                     </p>
                   )}
                 </div>
@@ -1448,34 +1503,16 @@ export function DashboardPage() {
                         exit={{ opacity: 0, x: 16 }}
                         className="group relative"
                       >
-                        {/* Swipe action hints — revealed as card slides */}
-                        <div className="absolute inset-0 flex items-center justify-between px-5 rounded-2xl pointer-events-none select-none">
-                          <div className="flex items-center gap-1.5 text-primary">
-                            <Pencil className="w-4 h-4" />
-                            <span className="text-xs font-medium">Editar</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-destructive">
-                            <span className="text-xs font-medium">Eliminar</span>
-                            <Trash2 className="w-4 h-4" />
-                          </div>
-                        </div>
-
-                        {/* Draggable card */}
-                        <motion.div
-                          drag="x"
-                          dragSnapToOrigin
-                          dragConstraints={{ left: -110, right: 110 }}
-                          dragElastic={0.08}
-                          dragMomentum={false}
+                        <SwipeCard
                           onDragStart={() => {
                             dragActiveRef.current = true
                             if (lpTimerRef.current) clearTimeout(lpTimerRef.current)
                             setLongPressId(null)
                           }}
-                          onDragEnd={(_, info) => {
+                          onDragEnd={(swipedLeft, swipedRight) => {
                             setTimeout(() => { dragActiveRef.current = false }, 50)
-                            if (info.offset.x < -75) setDeletingTxId(tx.id)
-                            else if (info.offset.x > 75) openEdit(tx)
+                            if (swipedLeft) setDeletingTxId(tx.id)
+                            else if (swipedRight) openEdit(tx)
                           }}
                         >
                         {/* Card row */}
@@ -1554,7 +1591,7 @@ export function DashboardPage() {
                             />
                           )}
                         </div>
-                        </motion.div>{/* end draggable */}
+                        </SwipeCard>
 
                         {/* Mobile long-press action row */}
                         <AnimatePresence>
