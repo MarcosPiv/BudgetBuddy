@@ -50,7 +50,6 @@ import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-contex
 import { supabase } from "@/lib/supabase"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { Calendar } from "@/components/ui/calendar"
-import { ExchangeWidget } from "@/components/ui/exchange-widget"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
@@ -1298,16 +1297,6 @@ export function DashboardPage() {
               </div>
             </motion.div>
           )}
-
-          {/* ── Exchange Rate Widget ──────────────────────────── */}
-          <motion.div
-            className="mb-4"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-          >
-            <ExchangeWidget />
-          </motion.div>
 
           {/* ── Category breakdown (collapsible) ─────────────── */}
           {categoryBreakdown.length > 0 && (
