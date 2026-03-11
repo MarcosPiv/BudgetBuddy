@@ -117,6 +117,7 @@ export function SettingsPage() {
   const [notifDailyTime, setNotifDailyTime] = useState(() => typeof window !== "undefined" ? (localStorage.getItem("bb_notif_daily_time") ?? "20:00") : "20:00")
   const [notifBudget, setNotifBudget] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_budget") === "true")
   const [notifRecurring, setNotifRecurring] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_recurring") === "true")
+  const [notifWeekly, setNotifWeekly] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_weekly") === "true")
 
   const handleNotifToggle = async (key: string, setter: (v: boolean) => void, current: boolean) => {
     const next = !current
@@ -621,6 +622,23 @@ export function SettingsPage() {
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifRecurring ? "bg-primary" : "bg-muted"}`}
                     >
                       <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifRecurring ? "translate-x-5" : "translate-x-0"}`} />
+                    </button>
+                  </div>
+
+                  {/* Weekly summary */}
+                  <div className="flex items-center justify-between px-4 py-3 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">Resumen semanal</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Cada lunes: gasto de la semana anterior</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={notifWeekly}
+                      onClick={() => handleNotifToggle("bb_notif_weekly", setNotifWeekly, notifWeekly)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifWeekly ? "bg-primary" : "bg-muted"}`}
+                    >
+                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifWeekly ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
                 </div>

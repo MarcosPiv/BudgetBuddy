@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Download, Search, StickyNote, ShoppingCart,
+  Search, StickyNote, ShoppingCart,
 } from "lucide-react"
 import { SwipeCard } from "./swipe-card"
 import { ReceiptImage } from "./receipt-image"
@@ -29,7 +29,6 @@ interface TransactionListProps {
   dragActiveRef: React.MutableRefObject<boolean>
   lpTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   usdRate: number
-  exportCSV: () => void
   openEdit: (tx: Transaction) => void
   setDeletingTxId: (id: string | null) => void
   handleTouchStart: (txId: string) => void
@@ -52,7 +51,6 @@ export function TransactionList({
   dragActiveRef,
   lpTimerRef,
   usdRate,
-  exportCSV,
   openEdit,
   setDeletingTxId,
   handleTouchStart,
@@ -74,17 +72,6 @@ export function TransactionList({
               : `(${filteredTransactions.length})`}
           </p>
           <div className="flex items-center gap-2">
-            {filteredTransactions.length > 0 && (
-              <button
-                type="button"
-                onClick={exportCSV}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                aria-label="Exportar CSV"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Exportar</span>
-              </button>
-            )}
             {filteredTransactions.length > 0 && (
               <p className="md:hidden text-[10px] text-muted-foreground/50">
                 Deslizá para editar o eliminar

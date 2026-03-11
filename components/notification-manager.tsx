@@ -9,9 +9,25 @@ const K = {
   dailyTime:     "bb_notif_daily_time",
   budget:        "bb_notif_budget",
   recurring:     "bb_notif_recurring",
+  weekly:        "bb_notif_weekly",
   lastDaily:     "bb_notif_last_daily",
   budgetMonth:   "bb_notif_budget_month",
   recurringMonth:"bb_notif_recurring_month",
+  weeklyKey:     "bb_notif_weekly_key",
+}
+
+function isoWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7))
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  return `${d.getUTCFullYear()}-W${week}`
+}
+
+function fmtArsShort(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${Math.round(n)}`
 }
 
 function ls(key: string) {
@@ -84,6 +100,53 @@ export function NotificationManager() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, monthlyBudget])
+
+  // ── Weekly summary (fires every Monday with last week's spending) ─────────────
+  useEffect(() => {
+    if (ls(K.weekly) !== "true") return
+
+    const now = new Date()
+    if (now.getDay() !== 1) return // Only on Mondays
+
+    const weekKey = isoWeekKey(now)
+    if (ls(K.weeklyKey) === weekKey) return
+
+    // Last week: Mon 00:00 → Sun 23:59:59
+    const lastMonday = new Date(now)
+    lastMonday.setDate(now.getDate() - 7)
+    lastMonday.setHours(0, 0, 0, 0)
+    const lastSunday = new Date(now)
+    lastSunday.setDate(now.getDate() - 1)
+    lastSunday.setHours(23, 59, 59, 999)
+
+    const lastWeekTxs = transactions.filter(tx => {
+      const d = new Date(tx.date)
+      return d >= lastMonday && d <= lastSunday
+    })
+
+    const totalExp = lastWeekTxs
+      .filter(tx => tx.type === "expense")
+      .reduce((a, tx) => a + toArs(tx), 0)
+
+    if (totalExp <= 0) return
+
+    const catMap: Record<string, number> = {}
+    lastWeekTxs.filter(tx => tx.type === "expense").forEach(tx => {
+      catMap[tx.category] = (catMap[tx.category] || 0) + toArs(tx)
+    })
+    const top3 = Object.entries(catMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([cat]) => cat)
+
+    localStorage.setItem(K.weeklyKey, weekKey)
+    showNotification(
+      "Resumen semanal 📊",
+      `La semana pasada gastaste ${fmtArsShort(totalExp)}${top3.length ? `. Top: ${top3.join(", ")}` : "."}`
+      , "weekly-summary"
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions])
 
   // ── Recurring reminder (fires on the 1st of each month) ───────────────────
   useEffect(() => {

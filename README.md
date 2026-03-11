@@ -11,12 +11,30 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 - **Magic Bar con IA** — escribí, dictá o mandá una foto de un ticket; Claude / GPT-4o / Gemini extrae monto, categoría e ícono automáticamente
 - **Multi-moneda ARS / USD** — tipo de cambio en vivo (Blue, Oficial, Tarjeta, MEP) vía DolarAPI; el tipo se bloquea al momento de cargar cada movimiento
 - **Analítica** — gráfico de tendencia anual y donut por categoría; sección de gastos fijos mensuales
+- **Exportar CSV y PDF** — desde Analítica, elegí un rango predefinido (mes, año) o un rango personalizado con calendario; el PDF se genera en el navegador sin dependencias externas
+- **Modo sin conexión mejorado** — las transacciones creadas, editadas o eliminadas sin internet se guardan en cola local y se sincronizan automáticamente al volver la conexión; el dashboard muestra un indicador de estado
+- **Resumen semanal automático** — cada lunes, notificación con el gasto total de la semana anterior y las 3 categorías principales
 - **Modo oscuro / claro** — paleta "Sage Morning" en modo claro, transición suave de 0.45s
 - **Swipe en mobile** — deslizá derecha para editar, izquierda para eliminar
-- **Notificaciones push (PWA)** — recordatorio diario, alerta al 90% del presupuesto, aviso de fijos el 1° de cada mes
-- **Instalable como PWA** — funciona offline, soporte para notch de iPhone
+- **Notificaciones push (PWA)** — recordatorio diario, alerta al 90% del presupuesto, aviso de fijos el 1° de cada mes, resumen semanal los lunes
+- **Instalable como PWA** — soporte para notch de iPhone, funciona con conexión inestable
 - **Chat financiero** — consultá tu historial con lenguaje natural; contexto de los últimos 12 meses
 - **Tres proveedores de IA** — Claude, GPT-4o, Gemini; switcheable en Ajustes
+
+---
+
+## Modo sin conexión — caso de uso
+
+> **Escenario:** estás en una feria o mercado con mala señal y querés registrar varios gastos en el momento.
+
+1. El celular pierde conexión a internet (o está en modo avión).
+2. Registrás normalmente: "Compré verduras $4.500", "Café $1.200", "Transporte $800".
+3. Las tres transacciones aparecen en el dashboard de inmediato gracias al **update optimista** — sin spinner, sin error.
+4. En el header aparece un badge ámbar: **"3 en cola"**, indicando que hay operaciones pendientes.
+5. Al salir del mercado y recuperar señal, BudgetBuddy detecta la reconexión automáticamente y sincroniza las 3 operaciones con Supabase en orden.
+6. El badge desaparece y las transacciones quedan persistidas con sus IDs reales.
+
+Lo mismo aplica para editar o eliminar un movimiento sin conexión: la operación queda en cola y se ejecuta en Supabase al volver la señal, sin que el usuario tenga que hacer nada.
 
 ---
 

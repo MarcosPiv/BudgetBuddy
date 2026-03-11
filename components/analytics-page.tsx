@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowLeft,
@@ -14,6 +14,8 @@ import {
   Dumbbell,
   ArrowDownLeft,
   Check,
+  Download,
+  FileText,
 } from "lucide-react"
 import {
   LineChart,
@@ -30,6 +32,9 @@ import {
 } from "recharts"
 import { useApp } from "@/lib/app-context"
 import type { Transaction } from "@/lib/app-context"
+import { Calendar } from "@/components/ui/calendar"
+import type { DateRange } from "react-day-picker"
+import { es } from "date-fns/locale"
 
 // ── Icon map ─────────────────────────────────────────────────────────────────
 const iconMap: Record<string, React.ElementType> = {
@@ -81,11 +86,217 @@ function PieTooltip({ active, payload }: { active?: boolean; payload?: { value: 
   )
 }
 
+type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
   const { setView, transactions, addTransaction, updateTransaction, usdRate } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
+
+  // ── Export state ────────────────────────────────────────────────────────────
+  const now = new Date()
+  const [exportMode, setExportMode] = useState<ExportMode>("thisMonth")
+  const [showExportCalendar, setShowExportCalendar] = useState(false)
+  const [exportCalRange, setExportCalRange] = useState<DateRange | undefined>()
+  const [exportApplied, setExportApplied] = useState<{ from: Date; to: Date } | null>(null)
+
+  const exportRange = useMemo((): { from: Date; to: Date } | null => {
+    const n = new Date()
+    switch (exportMode) {
+      case "thisMonth": {
+        const to = new Date(n); to.setHours(23, 59, 59, 999)
+        return { from: new Date(n.getFullYear(), n.getMonth(), 1), to }
+      }
+      case "lastMonth": {
+        const from = new Date(n.getFullYear(), n.getMonth() - 1, 1)
+        const to = new Date(n.getFullYear(), n.getMonth(), 0); to.setHours(23, 59, 59, 999)
+        return { from, to }
+      }
+      case "thisYear": {
+        const to = new Date(n); to.setHours(23, 59, 59, 999)
+        return { from: new Date(n.getFullYear(), 0, 1), to }
+      }
+      case "lastYear": {
+        const from = new Date(n.getFullYear() - 1, 0, 1)
+        const to = new Date(n.getFullYear() - 1, 11, 31); to.setHours(23, 59, 59, 999)
+        return { from, to }
+      }
+      case "custom":
+        return exportApplied
+      default:
+        return null
+    }
+  }, [exportMode, exportApplied])
+
+  const exportRangeLabel = useMemo(() => {
+    const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+    switch (exportMode) {
+      case "thisMonth": return now.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+      case "lastMonth": return new Date(now.getFullYear(), now.getMonth() - 1, 1)
+          .toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+      case "thisYear": return `Año ${now.getFullYear()}`
+      case "lastYear": return `Año ${now.getFullYear() - 1}`
+      case "custom": return exportApplied
+          ? `${fmt(exportApplied.from)} — ${fmt(exportApplied.to)}`
+          : "Rango personalizado"
+      default: return ""
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportMode, exportApplied])
+
+  const exportTxs = useMemo(() => {
+    if (!exportRange) return []
+    return transactions.filter(tx => {
+      const d = new Date(tx.date)
+      return d >= exportRange.from && d <= exportRange.to
+    })
+  }, [exportRange, transactions])
+
+  const applyExportRange = useCallback(() => {
+    if (!exportCalRange?.from) return
+    const to = exportCalRange.to ?? exportCalRange.from
+    const toEnd = new Date(to); toEnd.setHours(23, 59, 59, 999)
+    setExportApplied({ from: exportCalRange.from, to: toEnd })
+    setShowExportCalendar(false)
+  }, [exportCalRange])
+
+  // ── Export helpers ──────────────────────────────────────────────────────────
+  const exportCSV = () => {
+    const header = "Fecha,Tipo,Descripción,Categoría,Monto,Moneda,Nota"
+    const rows = exportTxs.map(tx => {
+      const date = new Date(tx.date).toLocaleDateString("es-AR")
+      const type = tx.type === "expense" ? "Gasto" : "Ingreso"
+      const desc = `"${tx.description.replace(/"/g, '""')}"`
+      const obs = tx.observation ? `"${tx.observation.replace(/"/g, '""')}"` : ""
+      return [date, type, desc, tx.category, tx.amount, tx.currency, obs].join(",")
+    })
+    const csv = [header, ...rows].join("\n")
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `BudgetBuddy-${exportRangeLabel.replace(/[\s/]/g, "-")}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportPDF = () => {
+    const totalExp = exportTxs
+      .filter(t => t.type === "expense")
+      .reduce((a, t) => a + toArs(t), 0)
+    const totalInc = exportTxs
+      .filter(t => t.type === "income")
+      .reduce((a, t) => a + toArs(t), 0)
+    const balance = totalInc - totalExp
+
+    // Category breakdown
+    const catMap: Record<string, number> = {}
+    exportTxs.filter(t => t.type === "expense").forEach(t => {
+      catMap[t.category] = (catMap[t.category] || 0) + toArs(t)
+    })
+    const catRows = Object.entries(catMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, val]) => `
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${cat}</td>
+          <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#ef4444;font-weight:600">
+            −${fmtArs(val)} ARS
+          </td>
+          <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#6b7280">
+            ${catMap ? Math.round((val / totalExp) * 100) : 0}%
+          </td>
+        </tr>`).join("")
+
+    // Transaction rows (latest first)
+    const txRows = [...exportTxs]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 50)
+      .map(tx => {
+        const isExp = tx.type === "expense"
+        const dateStr = new Date(tx.date).toLocaleDateString("es-AR")
+        const amtStr = `${isExp ? "−" : "+"}${tx.amount.toLocaleString("es-AR")} ${tx.currency}`
+        return `
+          <tr>
+            <td style="padding:5px 12px;border-bottom:1px solid #f3f4f6;font-size:12px">${dateStr}</td>
+            <td style="padding:5px 12px;border-bottom:1px solid #f3f4f6;font-size:12px">${tx.description}</td>
+            <td style="padding:5px 12px;border-bottom:1px solid #f3f4f6;font-size:12px;color:#6b7280">${tx.category}</td>
+            <td style="padding:5px 12px;border-bottom:1px solid #f3f4f6;font-size:12px;text-align:right;font-weight:600;color:${isExp ? "#ef4444" : "#10b981"}">${amtStr}</td>
+          </tr>`
+      }).join("")
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>BudgetBuddy — ${exportRangeLabel}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;background:#fff;padding:32px;max-width:800px;margin:0 auto}
+    @media print{body{padding:16px}}
+    h1{font-size:22px;font-weight:700;color:#111827}
+    h2{font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin:24px 0 10px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+    .logo-dot{width:32px;height:32px;background:#10b981;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px}
+    .subtitle{font-size:13px;color:#6b7280;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #f3f4f6}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+    .card{background:#f9fafb;border-radius:12px;padding:16px;border:1px solid #e5e7eb}
+    .card-label{font-size:11px;color:#6b7280;margin-bottom:4px;font-weight:500}
+    .card-value{font-size:20px;font-weight:700}
+    .card-value.inc{color:#10b981}
+    .card-value.exp{color:#ef4444}
+    .card-value.bal{color:${balance >= 0 ? "#10b981" : "#ef4444"}}
+    table{width:100%;border-collapse:collapse}
+    thead th{background:#f9fafb;padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;border-bottom:2px solid #e5e7eb}
+    .footer{margin-top:24px;font-size:11px;color:#9ca3af;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="logo">
+    <div class="logo-dot">BB</div>
+    <h1>BudgetBuddy</h1>
+  </div>
+  <p class="subtitle">Resumen de ${exportRangeLabel} · Generado el ${new Date().toLocaleDateString("es-AR")}</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Ingresos</div>
+      <div class="card-value inc">+${fmtArs(totalInc)}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Gastos</div>
+      <div class="card-value exp">−${fmtArs(totalExp)}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Balance</div>
+      <div class="card-value bal">${balance >= 0 ? "+" : ""}${fmtArs(balance)}</div>
+    </div>
+  </div>
+
+  ${catRows ? `
+  <h2>Gastos por categoría</h2>
+  <table>
+    <thead><tr><th>Categoría</th><th style="text-align:right">Monto</th><th style="text-align:right">%</th></tr></thead>
+    <tbody>${catRows}</tbody>
+  </table>` : ""}
+
+  <h2>Movimientos (${exportTxs.length}${exportTxs.length > 50 ? ", mostrando los 50 más recientes" : ""})</h2>
+  <table>
+    <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th style="text-align:right">Monto</th></tr></thead>
+    <tbody>${txRows || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af">Sin movimientos</td></tr>'}</tbody>
+  </table>
+
+  <p class="footer">BudgetBuddy · finanzas-budget-buddy.vercel.app</p>
+</body>
+</html>`
+
+    const win = window.open("", "_blank")
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 400)
+  }
 
   // Resolve CSS custom property colors for Recharts SVG strokes
   const [chartColors, setChartColors] = useState({ income: "#22c994", expense: "#e0633a" })
@@ -346,6 +557,147 @@ export function AnalyticsPage() {
               Registrá gastos para ver el desglose por categoría.
             </div>
           )}
+        </motion.div>
+
+        {/* ── Export ───────────────────────────────────────────────── */}
+        <motion.div
+          className="rounded-2xl border border-border bg-card overflow-hidden"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
+        >
+          <div className="p-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+              Exportar
+            </p>
+
+            {/* Preset chips */}
+            <div className="flex gap-2 flex-wrap mb-3">
+              {(
+                [
+                  { id: "thisMonth", label: "Este mes" },
+                  { id: "lastMonth", label: "Mes anterior" },
+                  { id: "thisYear",  label: `Año ${now.getFullYear()}` },
+                  { id: "lastYear",  label: `Año ${now.getFullYear() - 1}` },
+                  { id: "custom",    label: "Personalizado" },
+                ] as { id: ExportMode; label: string }[]
+              ).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setExportMode(id)
+                    if (id === "custom") {
+                      setShowExportCalendar(v => !v)
+                    } else {
+                      setShowExportCalendar(false)
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer border ${
+                    exportMode === id
+                      ? id === "custom"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "bg-primary text-primary-foreground border-transparent"
+                      : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Range summary */}
+            <p className="text-xs text-muted-foreground mb-4">
+              {exportTxs.length > 0
+                ? <><span className="font-medium text-foreground">{exportTxs.length}</span> movimientos · {exportRangeLabel}</>
+                : exportMode === "custom" && !exportApplied
+                  ? "Seleccioná un rango en el calendario"
+                  : `Sin movimientos · ${exportRangeLabel}`
+              }
+            </p>
+
+            {/* Export buttons */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={exportCSV}
+                disabled={exportTxs.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-secondary/50 text-sm font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportPDF}
+                disabled={exportTxs.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-sm font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileText className="w-4 h-4" />
+                PDF
+              </button>
+            </div>
+          </div>
+
+          {/* Inline calendar for custom range */}
+          <AnimatePresence>
+            {exportMode === "custom" && showExportCalendar && (
+              <motion.div
+                className="border-t border-border"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <div className="p-4 pt-3">
+                  {/* Range preview */}
+                  <div className="flex items-center justify-between mb-2 px-1 min-h-[20px]">
+                    {exportCalRange?.from ? (
+                      <>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {exportCalRange.from.toLocaleDateString("es-AR")}
+                          {" → "}
+                          {exportCalRange.to
+                            ? exportCalRange.to.toLocaleDateString("es-AR")
+                            : "..."}
+                        </span>
+                        {exportCalRange.to && (
+                          <span className="text-xs text-muted-foreground">
+                            {Math.max(1, Math.round(
+                              (exportCalRange.to.getTime() - exportCalRange.from.getTime()) / 86400000
+                            ) + 1)} días
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">
+                        Seleccioná fecha de inicio
+                      </span>
+                    )}
+                  </div>
+
+                  <Calendar
+                    mode="range"
+                    selected={exportCalRange}
+                    onSelect={setExportCalRange}
+                    locale={es}
+                    numberOfMonths={1}
+                    className="rounded-xl bg-transparent mx-auto"
+                    disabled={{ after: new Date() }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={applyExportRange}
+                    disabled={!exportCalRange?.from}
+                    className="mt-3 w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Aplicar rango
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* ── Recurring Transactions ───────────────────────────────── */}

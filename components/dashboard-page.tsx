@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2,
+  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -56,6 +56,8 @@ export function DashboardPage() {
     setTimeFilter,
     customRange,
     setCustomRange,
+    isOnline,
+    pendingOfflineCount,
   } = useApp()
 
   // ── Magic Bar state ──────────────────────────────────────────────────────────
@@ -627,26 +629,6 @@ export function DashboardPage() {
     applyRange(calendarRange.from, to)
   }
 
-  // ── CSV export ───────────────────────────────────────────────────────────────
-  const exportCSV = () => {
-    const header = "Fecha,Tipo,Descripción,Categoría,Monto,Moneda,Nota"
-    const rows = displayedTransactions.map(tx => {
-      const date = new Date(tx.date).toLocaleDateString("es-AR")
-      const type = tx.type === "expense" ? "Gasto" : "Ingreso"
-      const desc = `"${tx.description.replace(/"/g, '""')}"`
-      const obs = tx.observation ? `"${tx.observation.replace(/"/g, '""')}"` : ""
-      return [date, type, desc, tx.category, tx.amount, tx.currency, obs].join(",")
-    })
-    const csv = [header, ...rows].join("\n")
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `BudgetBuddy-${filterLabels[timeFilter].replace(/[\s/]/g, "-")}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <>
@@ -676,6 +658,20 @@ export function DashboardPage() {
               </motion.span>
             </div>
           </div>
+
+          {/* Offline / syncing pill */}
+          {(!isOnline || pendingOfflineCount > 0) && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+              !isOnline
+                ? "bg-amber-500/15 text-amber-500"
+                : "bg-primary/10 text-primary"
+            }`}>
+              {!isOnline
+                ? <><WifiOff className="w-3 h-3" />{pendingOfflineCount > 0 ? `${pendingOfflineCount} en cola` : "Sin conexión"}</>
+                : <><RefreshCw className="w-3 h-3 animate-spin" />Sincronizando...</>
+              }
+            </div>
+          )}
 
           {/* Right: actions */}
           <div className="flex items-center gap-0.5 shrink-0">
@@ -790,7 +786,6 @@ export function DashboardPage() {
               dragActiveRef={dragActiveRef}
               lpTimerRef={lpTimerRef}
               usdRate={usdRate}
-              exportCSV={exportCSV}
               openEdit={openEdit}
               setDeletingTxId={setDeletingTxId}
               handleTouchStart={handleTouchStart}

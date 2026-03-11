@@ -31,6 +31,23 @@ export interface Transaction {
   isRecurring?: boolean
 }
 
+// ── Offline queue ─────────────────────────────────────────────────────────────
+type OfflineOp =
+  | { op: "add"; tempId: string; row: Record<string, unknown> }
+  | { op: "update"; id: string; row: Record<string, unknown> }
+  | { op: "delete"; id: string }
+
+const QUEUE_KEY = "bb_offline_queue"
+
+function loadQueue(): OfflineOp[] {
+  if (typeof window === "undefined") return []
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? "[]") } catch { return [] }
+}
+
+function persistQueue(q: OfflineOp[]) {
+  if (typeof window !== "undefined") localStorage.setItem(QUEUE_KEY, JSON.stringify(q))
+}
+
 // ─── DB row → Transaction ─────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTransaction(row: any): Transaction {
@@ -70,6 +87,9 @@ interface AppState {
   // UI
   isProcessing: boolean
   setIsProcessing: (v: boolean) => void
+  // Offline
+  isOnline: boolean
+  pendingOfflineCount: number
   // AI Provider
   aiProvider: AIProvider
   setAiProvider: (p: AIProvider) => void
@@ -138,6 +158,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
 
+  // ── Offline state ────────────────────────────────────────────────────────────
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  )
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => loadQueue().length)
+
   // AI provider state
   const [aiProvider, setAiProvider] = useState<AIProvider>("claude")
   const [apiKeyClaude, setApiKeyClaude] = useState("")
@@ -161,6 +187,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = new Date()
     return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now }
   })
+
+  // ── Online/offline listeners ─────────────────────────────────────────────────
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    window.addEventListener("online", onOnline)
+    window.addEventListener("offline", onOffline)
+    return () => {
+      window.removeEventListener("online", onOnline)
+      window.removeEventListener("offline", onOffline)
+    }
+  }, [])
+
+  // ── Replay offline queue when back online ────────────────────────────────────
+  useEffect(() => {
+    if (!isOnline || !user) return
+    const queue = loadQueue()
+    if (queue.length === 0) return
+
+    ;(async () => {
+      const idMap = new Map<string, string>() // tempId → realId for chained ops
+      for (const op of queue) {
+        if (op.op === "add") {
+          const { data, error } = await supabase
+            .from("transactions").insert(op.row).select().single()
+          if (!error && data) {
+            idMap.set(op.tempId, data.id)
+            setTransactions(prev => prev.map(tx => tx.id === op.tempId ? mapTransaction(data) : tx))
+          }
+        } else if (op.op === "update") {
+          const realId = idMap.get(op.id) ?? op.id
+          await supabase.from("transactions").update(op.row).eq("id", realId)
+        } else if (op.op === "delete") {
+          const realId = idMap.get(op.id) ?? op.id
+          if (idMap.has(op.id)) setTransactions(prev => prev.filter(tx => tx.id !== realId))
+          await supabase.from("transactions").delete().eq("id", realId)
+        }
+      }
+      persistQueue([])
+      setPendingOfflineCount(0)
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, user])
 
   // ── Data loaders ────────────────────────────────────────────────────────────
   const loadProfile = async (userId: string) => {
@@ -270,28 +339,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addTransaction = (t: Omit<Transaction, "id">, onError?: (msg: string) => void) => {
     if (!user) return
 
-    // Optimistic update
     const tempId = `temp-${Date.now()}`
     setTransactions((prev) => [{ ...t, id: tempId }, ...prev])
 
+    const row: Record<string, unknown> = {
+      user_id: user.id,
+      description: t.description,
+      amount: t.amount,
+      type: t.type,
+      icon: t.icon,
+      category: t.category,
+      date: t.date instanceof Date ? t.date.toISOString() : t.date,
+      observation: t.observation ?? null,
+      currency: t.currency,
+      amount_usd: t.amountUsd ?? null,
+      tx_rate: t.txRate ?? null,
+      exchange_rate_type: t.exchangeRateType ?? null,
+      receipt_url: t.receiptUrl ?? null,
+      is_recurring: t.isRecurring ?? false,
+    }
+
+    // Offline: queue for sync when reconnected (keep optimistic update)
+    if (!navigator.onLine) {
+      const q = loadQueue()
+      const next = [...q, { op: "add" as const, tempId, row }]
+      persistQueue(next)
+      setPendingOfflineCount(next.length)
+      return
+    }
+
     supabase
       .from("transactions")
-      .insert({
-        user_id: user.id,
-        description: t.description,
-        amount: t.amount,
-        type: t.type,
-        icon: t.icon,
-        category: t.category,
-        date: t.date instanceof Date ? t.date.toISOString() : t.date,
-        observation: t.observation ?? null,
-        currency: t.currency,
-        amount_usd: t.amountUsd ?? null,
-        tx_rate: t.txRate ?? null,
-        exchange_rate_type: t.exchangeRateType ?? null,
-        receipt_url: t.receiptUrl ?? null,
-        is_recurring: t.isRecurring ?? false,
-      })
+      .insert(row)
       .select()
       .single()
       .then(({ data, error }) => {
@@ -312,6 +391,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteTransaction = (id: string, onError?: (msg: string) => void) => {
     const backup = transactions.find((tx) => tx.id === id)
     setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+
+    if (!navigator.onLine) {
+      const q = loadQueue()
+      const next = [...q, { op: "delete" as const, id }]
+      persistQueue(next)
+      setPendingOfflineCount(next.length)
+      return
+    }
+
     supabase
       .from("transactions")
       .delete()
@@ -330,23 +418,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!backup) return
     setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...updates } : tx))
     const merged = { ...backup, ...updates }
+
+    const row: Record<string, unknown> = {
+      description: merged.description,
+      amount: merged.amount,
+      type: merged.type,
+      icon: merged.icon,
+      category: merged.category,
+      date: merged.date instanceof Date ? merged.date.toISOString() : merged.date,
+      observation: merged.observation ?? null,
+      currency: merged.currency,
+      amount_usd: merged.amountUsd ?? null,
+      tx_rate: merged.txRate ?? null,
+      exchange_rate_type: merged.exchangeRateType ?? null,
+      receipt_url: merged.receiptUrl ?? null,
+      is_recurring: merged.isRecurring ?? false,
+    }
+
+    if (!navigator.onLine) {
+      const q = loadQueue()
+      const next = [...q, { op: "update" as const, id, row }]
+      persistQueue(next)
+      setPendingOfflineCount(next.length)
+      return
+    }
+
     supabase
       .from("transactions")
-      .update({
-        description: merged.description,
-        amount: merged.amount,
-        type: merged.type,
-        icon: merged.icon,
-        category: merged.category,
-        date: merged.date instanceof Date ? merged.date.toISOString() : merged.date,
-        observation: merged.observation ?? null,
-        currency: merged.currency,
-        amount_usd: merged.amountUsd ?? null,
-        tx_rate: merged.txRate ?? null,
-        exchange_rate_type: merged.exchangeRateType ?? null,
-        receipt_url: merged.receiptUrl ?? null,
-        is_recurring: merged.isRecurring ?? false,
-      })
+      .update(row)
       .eq("id", id)
       .then(({ error }) => {
         if (error) {
@@ -399,6 +498,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateTransaction,
     isProcessing,
     setIsProcessing,
+    isOnline,
+    pendingOfflineCount,
     aiProvider,
     setAiProvider,
     apiKeyClaude,
@@ -425,6 +526,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCustomRange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [user, loadingAuth, isPasswordRecovery, currentView, transactions, isProcessing,
+       isOnline, pendingOfflineCount,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
        monthlyBudget, profileMode, usdRate, exchangeRateMode, timeFilter, customRange])
 

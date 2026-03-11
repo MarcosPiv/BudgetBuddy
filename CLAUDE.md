@@ -128,15 +128,35 @@ Three LLM providers are supported. The active provider is selected in Settings:
 - Theme transition: `.theme-transitioning` class applied briefly via JS (`handleThemeChange` in settings) adds `!important` color transitions to all elements, overriding Tailwind utilities for a uniform 0.45s crossfade
 - Toggle: Sun/Moon pill in Settings page
 
+### Offline Queue
+
+`lib/app-context.tsx` handles offline operations transparently:
+- **Detection**: `navigator.onLine` checked before every Supabase write; `window` `online`/`offline` events update `isOnline` state in context.
+- **Queueing**: when offline, `addTransaction` / `updateTransaction` / `deleteTransaction` skip the Supabase call, keep the optimistic UI update, and push an `OfflineOp` entry to `localStorage` (`bb_offline_queue`).
+- **Replay**: a `useEffect` that depends on `[isOnline, user]` fires when connectivity returns, processes the queue in order, resolves `tempId → realId` for chained ops (e.g. add then update while offline), then clears the queue.
+- **UI**: dashboard header shows an amber pill "N en cola" when offline, or a spinning "Sincronizando..." when back online and draining the queue.
+- Exposed via context: `isOnline: boolean`, `pendingOfflineCount: number`.
+
 ### Notifications (PWA)
 
 - `hooks/use-notifications.ts` — `requestPermission()` + `showNotification()` via `ServiceWorkerRegistration.showNotification()` (works when PWA is in background)
-- `components/notification-manager.tsx` — renders null, wires up 3 schedulers:
+- `components/notification-manager.tsx` — renders null, wires up 4 schedulers:
   - **Daily reminder**: `setTimeout` to configured time, checks `bb_notif_last_daily` to avoid double-fire
   - **Budget alert**: fires when monthly expenses ≥ 90% of budget (once per month, keyed by `bb_notif_budget_month`)
   - **Recurring reminder**: fires on the 1st of each month if user has recurring transactions
-- Settings toggles: 3 toggles + time picker in Settings page, stored in `localStorage` (`bb_notif_daily`, `bb_notif_daily_time`, `bb_notif_budget`, `bb_notif_recurring`)
+  - **Weekly summary**: fires every Monday with last week's total expenses and top 3 categories; keyed by ISO week (`bb_notif_weekly_key`)
+- Settings toggles: 4 toggles + time picker in Settings page, stored in `localStorage` (`bb_notif_daily`, `bb_notif_daily_time`, `bb_notif_budget`, `bb_notif_recurring`, `bb_notif_weekly`)
 - `public/sw.js` handles `push` and `notificationclick` events
+
+### Export (CSV + PDF)
+
+Export lives entirely in `components/analytics-page.tsx` — removed from dashboard.
+
+- **Range selector**: 5 presets — "Este mes", "Mes anterior", "Año YYYY", "Año YYYY-1", "Personalizado".
+- **Custom range**: selecting "Personalizado" toggles an inline `<Calendar mode="range">` (same shadcn Calendar used in the filter bar). On "Aplicar rango" it sets `exportApplied: { from, to }`.
+- **`exportTxs`**: memoized filter of `transactions` by `exportRange` (derived from the active mode + `exportApplied`).
+- **CSV**: BOM-prefixed UTF-8, columns: Fecha, Tipo, Descripción, Categoría, Monto, Moneda, Nota. Filename uses `exportRangeLabel`.
+- **PDF**: generates a full HTML document (inline styles) opened in `window.open`, then calls `window.print()` after 400ms. Includes summary cards, category breakdown table, and transaction list (capped at 50). No external dependencies.
 
 ### Transaction List UX
 
