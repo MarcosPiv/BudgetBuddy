@@ -4,13 +4,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Wallet, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
 
 function fmtCompact(n: number): string {
-  const abs = Math.abs(n)
   const sign = n < 0 ? "-" : ""
-  if (abs >= 10_000_000) return `${sign}$${(abs / 1_000_000).toFixed(0)}M`
-  if (abs >= 1_000_000)  return `${sign}$${(abs / 1_000_000).toFixed(1).replace(".", ",")}M`
-  if (abs >= 100_000)    return `${sign}$${(abs / 1_000).toFixed(0)}K`
-  if (abs >= 10_000)     return `${sign}$${(abs / 1_000).toFixed(1).replace(".", ",")}K`
-  return `${sign}$${Math.round(abs).toLocaleString("es-AR")}`
+  return `${sign}$${Math.round(Math.abs(n)).toLocaleString("es-AR")}`
 }
 
 interface SummaryCardsProps {
@@ -116,7 +111,7 @@ export function SummaryCards({
           </div>
           <span className="text-xs text-muted-foreground">Ingresos</span>
         </div>
-        <p className="text-xl font-bold text-primary tabular-nums leading-tight truncate">
+        <p className="text-base font-bold text-primary tabular-nums leading-tight truncate">
           {fmtCompact(totalIncome)}
         </p>
       </div>
@@ -127,7 +122,7 @@ export function SummaryCards({
           </div>
           <span className="text-xs text-muted-foreground">Gastos</span>
         </div>
-        <p className="text-xl font-bold text-destructive tabular-nums leading-tight truncate">
+        <p className="text-base font-bold text-destructive tabular-nums leading-tight truncate">
           {fmtCompact(totalExpenses)}
         </p>
       </div>
