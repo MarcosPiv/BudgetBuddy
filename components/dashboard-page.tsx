@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw,
+  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -16,7 +16,7 @@ import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import type { DateRange } from "react-day-picker"
 
 // Sub-components
-import { OnboardingOverlay } from "./dashboard/onboarding-overlay"
+import { OnboardingWizard } from "@/components/onboarding-wizard"
 import { SummaryCards } from "./dashboard/summary-cards"
 import { CategoryChart } from "./dashboard/category-chart"
 import { FilterBar } from "./dashboard/filter-bar"
@@ -145,6 +145,20 @@ export function DashboardPage() {
     if (typeof window === "undefined") return false
     return !localStorage.getItem(ONBOARDING_KEY)
   })
+  const [showFirstTxTooltip, setShowFirstTxTooltip] = useState(false)
+  const [showCelebration, setShowCelebration] = useState(false)
+  const prevTxCountRef = useRef(transactions.length)
+
+  useEffect(() => {
+    const prev = prevTxCountRef.current
+    prevTxCountRef.current = transactions.length
+    if (prev === 0 && transactions.length === 1 && !showOnboarding) {
+      setShowFirstTxTooltip(false)
+      setShowCelebration(true)
+      localStorage.setItem("bb_first_tx_tip", "done")
+      setTimeout(() => setShowCelebration(false), 2800)
+    }
+  }, [transactions.length, showOnboarding])
 
   // ── Filter / calendar ────────────────────────────────────────────────────────
   const [showCalendar, setShowCalendar] = useState(false)
@@ -1047,9 +1061,77 @@ export function DashboardPage() {
       </Dialog>
 
       {/* ── Onboarding overlay ──────────────────────────────── */}
+      {/* ── First-tx tooltip ────────────────────────────────── */}
+      <AnimatePresence>
+        {showFirstTxTooltip && (
+          <motion.div
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-card border border-primary/40 rounded-2xl px-4 py-3.5 shadow-xl w-[calc(100%-2rem)] max-w-xs text-center"
+            initial={{ opacity: 0, y: 12, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.95 }}
+            transition={{ type: "spring", damping: 20, stiffness: 260 }}
+          >
+            <p className="text-sm font-semibold text-foreground">Registrá tu primer gasto</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Ej: <span className="font-medium text-foreground">"Almuerzo $1500"</span> o <span className="font-medium text-foreground">"Nafta 10 dólares"</span>
+            </p>
+            <motion.div
+              className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rotate-45 bg-card border-r border-b border-primary/40"
+            />
+            <button
+              type="button"
+              onClick={() => { setShowFirstTxTooltip(false); localStorage.setItem("bb_first_tx_tip", "done") }}
+              className="absolute top-2 right-2.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer text-xs"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── First-tx celebration ─────────────────────────────── */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <motion.div
+              className="flex flex-col items-center gap-3 bg-card border border-primary/30 rounded-2xl px-8 py-7 shadow-2xl"
+              initial={{ scale: 0.85, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.85, y: 20 }}
+              transition={{ type: "spring", damping: 18, stiffness: 240 }}
+            >
+              <motion.div
+                className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/10"
+                animate={{ scale: [1, 1.18, 1, 1.08, 1] }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+              >
+                <CheckCircle2 className="w-8 h-8 text-primary" />
+              </motion.div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-foreground">¡Primer movimiento registrado!</p>
+                <p className="text-sm text-muted-foreground mt-1">Ya estás controlando tus finanzas</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Onboarding wizard ────────────────────────────────── */}
       <AnimatePresence>
         {showOnboarding && (
-          <OnboardingOverlay onDone={() => setShowOnboarding(false)} />
+          <OnboardingWizard onDone={() => {
+            setShowOnboarding(false)
+            if (transactions.length === 0) {
+              setShowFirstTxTooltip(true)
+            }
+          }} />
         )}
       </AnimatePresence>
     </>
