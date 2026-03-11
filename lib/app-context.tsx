@@ -165,47 +165,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // ── Native back-gesture / Android back button support ──────────────────────
+  // ── Android back button / back-gesture support ─────────────────────────────
+  // NOTE: iOS PWA standalone mode does NOT fire popstate on edge-swipe (platform limit).
   useEffect(() => {
     if (typeof window === "undefined") return
-    // Seed the initial history entry so there is always a state to pop to
-    history.replaceState({ view: currentViewRef.current }, "")
 
-    // Double-back-to-exit: track presses from dashboard
+    // Seed the initial entry, then push one extra so there is always
+    // something to pop before the PWA itself exits.
+    history.replaceState({ view: "base" }, "")
+    history.pushState({ view: currentViewRef.current }, "")
+
     const backPress = { count: 0, timer: null as ReturnType<typeof setTimeout> | null }
+    // Flag to swallow the popstate that history.go(1) fires after a bounce
+    const isBouncing = { current: false }
 
     const handlePopState = (e: PopStateEvent) => {
-      const target = e.state?.view as View | undefined
-      if (!target) return
+      // Ignore the forward-navigation popstate we fire ourselves to bounce back
+      if (isBouncing.current) {
+        isBouncing.current = false
+        return
+      }
 
-      // Logged-in user going back past the authenticated stack
-      if (userRef.current && !AUTHENTICATED_VIEWS.includes(target)) {
+      const target = (e.state as { view?: View } | null)?.view
+
+      // Logged-in user going back past the authenticated stack (landing, base, or null)
+      if (userRef.current && (!target || !AUTHENTICATED_VIEWS.includes(target))) {
         backPress.count++
         if (backPress.timer) clearTimeout(backPress.timer)
 
         if (backPress.count >= 2) {
-          // Second press within 2.5 s → allow exit (navigate to landing, PWA closes naturally)
+          // Second press → allow the PWA to close naturally on Android
           backPress.count = 0
-          currentViewRef.current = "landing"
-          setNavDirection("back")
-          setCurrentView("landing")
-          sessionStorage.removeItem("bb_view")
           return
         }
 
-        // First press: bounce back and show hint toast
-        history.pushState({ view: "dashboard" }, "")
-        currentViewRef.current = "dashboard"
-        setNavDirection("back")
-        setCurrentView("dashboard")
-        sessionStorage.setItem("bb_view", "dashboard")
+        // First press: undo the back with go(1) and show hint
+        isBouncing.current = true
+        history.go(1)
         window.dispatchEvent(new CustomEvent("bb_exit_hint"))
         backPress.timer = setTimeout(() => { backPress.count = 0 }, 2500)
         return
       }
 
       // Not logged in trying to reach authenticated view → block
-      if (!userRef.current && AUTHENTICATED_VIEWS.includes(target)) return
+      if (!userRef.current && target && AUTHENTICATED_VIEWS.includes(target)) return
+
+      if (!target) return
 
       currentViewRef.current = target
       setNavDirection("back")
