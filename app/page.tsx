@@ -9,11 +9,12 @@ import { NotificationManager } from "@/components/notification-manager"
 import { BiometricLock } from "@/components/biometric-lock"
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
+import { DashboardSkeleton } from "@/components/dashboard/skeleton"
 
 // Code-split heavy pages — only load the JS chunk when the view is active
 const DashboardPage = dynamic(
   () => import("@/components/dashboard-page").then((m) => ({ default: m.DashboardPage })),
-  { ssr: false }
+  { ssr: false, loading: () => <DashboardSkeleton /> }
 )
 const SettingsPage = dynamic(
   () => import("@/components/settings-page").then((m) => ({ default: m.SettingsPage })),
@@ -44,6 +45,13 @@ function AppRouter() {
   }, [loadingAuth, user])
 
   if (loadingAuth) {
+    // If the user had an authenticated session, show the dashboard skeleton
+    // instead of a blank spinner — smoother perceived loading
+    const hadSession = typeof window !== "undefined" &&
+      ["dashboard", "settings", "profile", "analytics"].includes(
+        sessionStorage.getItem("bb_view") ?? ""
+      )
+    if (hadSession) return <DashboardSkeleton />
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <motion.div
