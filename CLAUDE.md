@@ -45,6 +45,7 @@ All global state lives in `lib/app-context.tsx` (React Context). Key state field
 - `isPasswordRecovery` — true when Supabase fires `PASSWORD_RECOVERY` event (used as fallback; primary flow uses `/reset-password` page)
 - `timeFilter` — `week | month | year | custom`
 - `customRange` — `{ from: Date; to: Date }`
+- `navDirection` — `"forward" | "back"` — set before each view transition; used in `app/page.tsx` to skip the enter animation when navigating back (matches native OS gesture feel)
 
 `currentViewRef` (useRef) mirrors `currentView` and is used inside async auth callbacks to avoid stale-closure bugs. The view is also persisted to `sessionStorage` (`bb_view`) so it survives tab-discard/remount.
 
@@ -245,6 +246,48 @@ Los sub-componentes en `components/dashboard/` son puramente presentacionales o 
 - **`magic-bar.tsx`** — recibe `galleryInputRef` y `cameraInputRef` desde el orquestador para poder hacer `.click()` sobre los inputs ocultos.
 
 El patrón de prop drilling explícito (sin Context) es intencional: cada componente declara exactamente qué necesita, lo que facilita el testing y el rastreo de dependencias.
+
+### Native Back Gestures & Android Double-Back-to-Exit
+
+`lib/app-context.tsx` integrates with the browser History API to support the Android back gesture and button:
+
+- **`setView(view, replace?)`** — calls `history.pushState({ view }, "")` on forward navigation, `history.replaceState` when `replace=true` (used on signOut and auth SIGNED_OUT to prevent back-to-dashboard after logout).
+- **`history.replaceState` on mount** — seeds the current view into `history.state` on first render so the popstate handler always has a valid `state.view`.
+- **`popstate` handler** — fires when the Android back button/gesture navigates the browser history:
+  - If the user is authenticated and the target is outside `AUTHENTICATED_VIEWS` (or `null`): dispatch `bb_exit_hint` custom event (shows "Deslizá de nuevo para salir" toast) and do NOT change React state. The browser is now at the bottom of the history stack — the next Android back naturally closes the PWA.
+  - Otherwise: set `navDirection = "back"`, update `currentView`, update `sessionStorage`.
+- **`navDirection` in `app/page.tsx`**: `initial={navDirection === "back" ? false : { opacity: 0 }}` — when going back, the incoming view appears instantly (no fade-in), matching the native OS gesture animation.
+- **iOS limitation**: iOS Safari standalone (PWA) mode does NOT fire `popstate` for the edge-swipe gesture. This is an Apple platform constraint and cannot be fixed with JavaScript.
+
+### iOS Safe Area (Notch / Dynamic Island)
+
+All sticky/fixed headers include an inline `paddingTop` to clear the iOS notch in PWA standalone mode:
+```tsx
+style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
+```
+Applied to: dashboard sticky header, settings sticky header, profile sticky header, analytics sticky header, landing nav header.
+
+The `Toaster` in `app/layout.tsx` uses a bottom offset to clear the home indicator:
+```tsx
+offset="calc(env(safe-area-inset-bottom, 0px) + 96px)"
+```
+This requires `viewportFit: 'cover'` + `statusBarStyle: 'black-translucent'` in the metadata viewport (already set).
+
+### Sticky Headers (Settings / Profile / Analytics)
+
+Settings, Profile, and Analytics pages use a sticky header pattern instead of a fixed back button:
+```tsx
+<div className="min-h-screen flex flex-col bg-background">
+  <header className="sticky top-0 z-30 flex items-center gap-3 px-4 pb-3 border-b border-border bg-background/90 backdrop-blur-md"
+    style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}>
+    {/* back button + page title */}
+  </header>
+  <motion.div className="flex-1 px-4 py-6 ...">
+    {/* scrollable content */}
+  </motion.div>
+</div>
+```
+This prevents the back button from overlapping content when scrolling on mobile.
 
 ### PWA
 

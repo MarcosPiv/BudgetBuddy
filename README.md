@@ -15,9 +15,9 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 - **Modo sin conexión mejorado** — las transacciones creadas, editadas o eliminadas sin internet se guardan en cola local y se sincronizan automáticamente al volver la conexión; el dashboard muestra un indicador de estado
 - **Resumen semanal automático** — cada lunes, notificación con el gasto total de la semana anterior y las 3 categorías principales
 - **Modo oscuro / claro** — paleta "Sage Morning" en modo claro, transición suave de 0.45s
-- **Swipe en mobile** — deslizá derecha para editar, izquierda para eliminar
+- **Swipe en mobile** — deslizá derecha para editar, izquierda para eliminar; gestos nativos de navegación en Android (botón/gesto back con doble-back para salir)
 - **Notificaciones push (PWA)** — recordatorio diario, alerta al 90% del presupuesto, aviso de fijos el 1° de cada mes, resumen semanal los lunes
-- **Instalable como PWA** — soporte para notch de iPhone, funciona con conexión inestable
+- **Instalable como PWA** — soporte completo para notch / Dynamic Island de iPhone, headers sticky con safe-area insets, funciona con conexión inestable
 - **Chat financiero** — consultá tu historial con lenguaje natural; contexto de los últimos 12 meses
 - **Tres proveedores de IA** — Claude, GPT-4o, Gemini; switcheable en Ajustes
 
