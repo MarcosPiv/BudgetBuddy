@@ -1,10 +1,12 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { AppProvider, useApp } from "@/lib/app-context"
 import { LandingPage } from "@/components/landing-page"
 import { AuthPage } from "@/components/auth-page"
 import { NotificationManager } from "@/components/notification-manager"
+import { BiometricLock } from "@/components/biometric-lock"
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
 
@@ -27,7 +29,19 @@ const AnalyticsPage = dynamic(
 )
 
 function AppRouter() {
-  const { currentView, loadingAuth } = useApp()
+  const { currentView, loadingAuth, user } = useApp()
+  const [locked, setLocked] = useState(() => {
+    if (typeof window === "undefined") return false
+    return (
+      localStorage.getItem("bb_biometric_enabled") === "true" &&
+      !!localStorage.getItem("bb_biometric_credential_id") &&
+      sessionStorage.getItem("bb_unlocked") !== "true"
+    )
+  })
+
+  useEffect(() => {
+    if (!loadingAuth && !user) setLocked(false)
+  }, [loadingAuth, user])
 
   if (loadingAuth) {
     return (
@@ -43,6 +57,8 @@ function AppRouter() {
       </div>
     )
   }
+
+  if (locked && user) return <BiometricLock onUnlock={() => setLocked(false)} />
 
   return (
     <AnimatePresence mode="wait">

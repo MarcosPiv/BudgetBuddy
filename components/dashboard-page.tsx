@@ -186,6 +186,31 @@ export function DashboardPage() {
   const balance = isExpensesOnly ? monthlyBudget - totalExpenses : totalIncome - totalExpenses
   const spentPercent = isExpensesOnly ? Math.min((totalExpenses / monthlyBudget) * 100, 100) : 0
 
+  const prevPeriodExpenses = useMemo(() => {
+    if (timeFilter === "custom") return null
+    const now = new Date()
+    let from: Date, to: Date
+    if (timeFilter === "week") {
+      from = new Date(now); from.setDate(now.getDate() - 14); from.setHours(0, 0, 0, 0)
+      to = new Date(now); to.setDate(now.getDate() - 7); to.setHours(23, 59, 59, 999)
+    } else if (timeFilter === "month") {
+      from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      to = new Date(now.getFullYear(), now.getMonth(), 0); to.setHours(23, 59, 59, 999)
+    } else {
+      from = new Date(now.getFullYear() - 1, 0, 1)
+      to = new Date(now.getFullYear() - 1, 11, 31); to.setHours(23, 59, 59, 999)
+    }
+    return transactions
+      .filter(tx => { const d = new Date(tx.date); return tx.type === "expense" && d >= from && d <= to })
+      .reduce((a, tx) => a + toArs(tx), 0)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, timeFilter, usdRate])
+
+  const expensesChangePct = (prevPeriodExpenses !== null && prevPeriodExpenses > 0)
+    ? ((totalExpenses - prevPeriodExpenses) / prevPeriodExpenses) * 100
+    : null
+  const periodLabel = timeFilter === "week" ? "vs sem. ant." : timeFilter === "month" ? "vs mes ant." : "vs año ant."
+
   const formatCurrency = (n: number) => `$ ${Math.abs(n).toLocaleString("es-AR")} ARS`
 
   const filterLabels: Record<TimeFilter, string> = useMemo(() => ({
@@ -691,17 +716,28 @@ export function DashboardPage() {
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
               </span>
-              <motion.span
-                className={`text-lg font-bold tabular-nums truncate ${
-                  balance >= 0 ? "text-primary" : "text-destructive"
-                }`}
-                key={balance}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                {balance < 0 ? "-" : ""}
-                {formatCurrency(balance)}
-              </motion.span>
+              <div className="flex items-baseline gap-2">
+                <motion.span
+                  className={`text-lg font-bold tabular-nums truncate ${
+                    balance >= 0 ? "text-primary" : "text-destructive"
+                  }`}
+                  key={balance}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {balance < 0 ? "-" : ""}
+                  {formatCurrency(balance)}
+                </motion.span>
+                {expensesChangePct !== null && (
+                  <span className={`text-[10px] font-medium tabular-nums shrink-0 ${
+                    expensesChangePct > 5 ? "text-destructive" :
+                    expensesChangePct < -5 ? "text-primary" :
+                    "text-muted-foreground"
+                  }`}>
+                    {expensesChangePct > 0 ? "+" : ""}{expensesChangePct.toFixed(0)}% {periodLabel}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -785,6 +821,15 @@ export function DashboardPage() {
             >
               {balance < 0 ? "-" : ""}{formatCurrency(balance)}
             </motion.span>
+            {expensesChangePct !== null && (
+              <span className={`text-xs font-medium tabular-nums mt-0.5 ${
+                expensesChangePct > 5 ? "text-destructive" :
+                expensesChangePct < -5 ? "text-primary" :
+                "text-muted-foreground"
+              }`}>
+                {expensesChangePct > 0 ? "+" : ""}{expensesChangePct.toFixed(0)}% gastos {periodLabel}
+              </span>
+            )}
           </div>
         </header>
 

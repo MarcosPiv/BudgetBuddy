@@ -21,11 +21,13 @@ import {
   Bell,
   BellOff,
   ChevronDown,
+  Fingerprint,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useApp, type ProfileMode, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
+import { useBiometric } from "@/hooks/use-biometric"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import { useTheme } from "next-themes"
 import { useNotifications } from "@/hooks/use-notifications"
@@ -78,6 +80,7 @@ const AI_PROVIDERS: Array<{
 export function SettingsPage() {
   const {
     setView,
+    user,
     aiProvider,
     setAiProvider,
     apiKeyClaude,
@@ -113,6 +116,40 @@ export function SettingsPage() {
   const [exOpen, setExOpen] = useState(false)
 
   const { theme, setTheme } = useTheme()
+
+  const biometric = useBiometric()
+  const [biometricActive, setBiometricActive] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("bb_biometric_enabled") === "true"
+  )
+  const [biometricLoading, setBiometricLoading] = useState(false)
+  const [biometricError, setBiometricError] = useState<string | null>(null)
+
+  const handleBiometricToggle = async () => {
+    setBiometricError(null)
+    if (biometricActive) {
+      biometric.disable()
+      setBiometricActive(false)
+      return
+    }
+    if (!biometric.isSupported) {
+      setBiometricError("Tu dispositivo no soporta biometría")
+      return
+    }
+    setBiometricLoading(true)
+    try {
+      const ok = await biometric.register(user?.id ?? "local", user?.email ?? "usuario")
+      if (ok) {
+        localStorage.setItem("bb_biometric_enabled", "true")
+        setBiometricActive(true)
+      } else {
+        setBiometricError("No se pudo activar la biometría")
+      }
+    } catch {
+      setBiometricError("Error al registrar huella/Face ID")
+    } finally {
+      setBiometricLoading(false)
+    }
+  }
   const { isSupported: notifSupported, requestPermission } = useNotifications()
 
   const [notifDaily, setNotifDaily] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_daily") === "true")
@@ -288,6 +325,45 @@ export function SettingsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Biometric lock */}
+            {biometric.isSupported && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Fingerprint className="w-3.5 h-3.5" />
+                    Bloqueo biométrico
+                  </Label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={biometricActive}
+                    disabled={biometricLoading}
+                    onClick={handleBiometricToggle}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none disabled:opacity-50 ${biometricActive ? "bg-primary" : "bg-muted"}`}
+                  >
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${biometricActive ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+                <AnimatePresence>
+                  {biometricError && (
+                    <motion.p
+                      className="text-[11px] text-destructive"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      {biometricError}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+                {biometricActive && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Face ID / Touch ID requerido al abrir la app
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Profile Mode Selector */}
             <div className="flex flex-col gap-2">
