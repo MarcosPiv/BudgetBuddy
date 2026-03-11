@@ -4,7 +4,7 @@ import { useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
-  Mic, MicOff, Loader2, DollarSign, Trash2, Settings, CalendarIcon,
+  Mic, MicOff, Loader2, DollarSign, Trash2, Settings, CalendarIcon, PenLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +54,7 @@ interface MagicBarProps {
   startRecording: () => void
   stopRecording: () => void
   aiError: string | null
+  onManualEntry: () => void
 }
 
 export function MagicBar({
@@ -89,6 +90,7 @@ export function MagicBar({
   startRecording,
   stopRecording,
   aiError,
+  onManualEntry,
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -309,7 +311,18 @@ export function MagicBar({
               )}
 
               {/* Multimodal toolbar */}
-              <div className="grid grid-cols-5 gap-1 pt-2 border-t border-border/40">
+              <div className="grid grid-cols-3 gap-1 pt-2 border-t border-border/40">
+
+                {/* Manual entry */}
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  onClick={onManualEntry}
+                  aria-label="Formulario manual"
+                >
+                  <PenLine className="w-3.5 h-3.5 shrink-0" />
+                  <span>Manual</span>
+                </button>
 
                 {/* Date picker */}
                 <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>

@@ -251,7 +251,9 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 <div>
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Paso 2 de 2</p>
                   <h2 className="text-lg font-bold text-foreground">Activá el asistente IA</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Opcional — podés configurarlo después en Ajustes.</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Opcional — podés configurarlo después en Ajustes. Sin API key, usá el formulario manual (✏️) en la barra inferior para cargar movimientos.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">

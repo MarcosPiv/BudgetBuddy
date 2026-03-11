@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Transaction, ExchangeRateType } from "@/lib/app-context"
+import type { ExchangeRateType } from "@/lib/app-context"
 import { VALID_CATEGORIES, CATEGORY_ICON_MAP } from "./shared"
 
 export interface EditForm {
@@ -33,30 +33,36 @@ interface RateOption {
 }
 
 interface EditDialogProps {
-  editingTx: Transaction | null
-  setEditingTx: (tx: Transaction | null) => void
+  open: boolean
+  onClose: () => void
+  title: string
+  subtitle?: string
+  saveLabel: string
   editForm: EditForm
   setEditForm: React.Dispatch<React.SetStateAction<EditForm>>
   rateTypeOptions: RateOption[]
   ratesLoading: boolean
   usdRate: number
-  handleSaveEdit: () => void
+  onSave: () => void
   getEditRate: () => number
 }
 
 export function EditDialog({
-  editingTx,
-  setEditingTx,
+  open,
+  onClose,
+  title,
+  subtitle,
+  saveLabel,
   editForm,
   setEditForm,
   rateTypeOptions,
   ratesLoading,
   usdRate,
-  handleSaveEdit,
+  onSave,
   getEditRate,
 }: EditDialogProps) {
   return (
-    <Dialog open={!!editingTx} onOpenChange={(open) => { if (!open) setEditingTx(null) }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="sm:max-w-md p-0 gap-0 bg-card border-border flex flex-col max-h-[92dvh] overflow-hidden">
 
         {/* Fixed header */}
@@ -70,8 +76,10 @@ export function EditDialog({
                 : <TrendingUp className="w-4.5 h-4.5 text-primary" />}
             </div>
             <div>
-              <DialogTitle className="text-foreground text-base leading-tight">Editar movimiento</DialogTitle>
-              <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[240px]">{editingTx?.description}</p>
+              <DialogTitle className="text-foreground text-base leading-tight">{title}</DialogTitle>
+              {subtitle && (
+                <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[240px]">{subtitle}</p>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -296,16 +304,16 @@ export function EditDialog({
           <Button
             variant="outline"
             className="flex-1 cursor-pointer h-10"
-            onClick={() => setEditingTx(null)}
+            onClick={onClose}
           >
             Cancelar
           </Button>
           <Button
             className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer h-10 font-semibold"
-            onClick={handleSaveEdit}
+            onClick={onSave}
             disabled={!editForm.amount || parseFloat(editForm.amount) <= 0}
           >
-            Guardar cambios
+            {saveLabel}
           </Button>
         </div>
       </DialogContent>

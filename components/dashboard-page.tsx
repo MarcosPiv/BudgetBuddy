@@ -7,8 +7,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
@@ -128,12 +126,8 @@ export function DashboardPage() {
     })
   }
 
-  // ── Offline manual entry ─────────────────────────────────────────────────────
-  const [showOfflineForm, setShowOfflineForm] = useState(false)
-  const [offlineDesc, setOfflineDesc] = useState("")
-  const [offlineAmount, setOfflineAmount] = useState("")
-  const [offlineType, setOfflineType] = useState<"expense" | "income">("expense")
-  const [offlineCategory, setOfflineCategory] = useState("General")
+  // ── Manual entry (no-AI / offline fallback) ──────────────────────────────────
+  const [showManualEntry, setShowManualEntry] = useState(false)
 
   // ── Search / view state ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
@@ -308,23 +302,56 @@ export function DashboardPage() {
     return (live as { venta?: number } | null)?.venta ?? usdRate
   }
 
+  // ── Manual entry helpers ─────────────────────────────────────────────────────
+  const openManualEntry = (prefillDesc = "") => {
+    setEditForm({
+      description: prefillDesc,
+      amount: "",
+      type: "expense",
+      category: "General",
+      icon: "ShoppingCart",
+      date: new Date().toISOString().split("T")[0],
+      currency: newCurrency,
+      exRateType: newExRateType,
+      manualRate: newManualRate,
+      observation: "",
+      isRecurring: false,
+    })
+    setShowManualEntry(true)
+  }
+
+  const handleSaveNew = () => {
+    const amount = parseFloat(editForm.amount)
+    if (!amount || amount <= 0) return
+    addTransaction({
+      description: editForm.description.trim() || "Transacción",
+      amount,
+      type: editForm.type,
+      icon: editForm.icon,
+      category: editForm.category,
+      date: editForm.date ? new Date(editForm.date + "T12:00:00") : new Date(),
+      currency: editForm.currency,
+      amountUsd: editForm.currency === "USD" ? amount : undefined,
+      txRate: editForm.currency === "USD" ? getEditRate() : undefined,
+      exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
+      observation: editForm.observation.trim() || undefined,
+      isRecurring: editForm.isRecurring,
+    }, (msg) => {
+      setAiError(msg)
+      setTimeout(() => setAiError(null), 5000)
+    })
+    setShowManualEntry(false)
+  }
+
   const handleMagicSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
 
-    // If offline, open manual entry form instead of calling AI
-    if (!isOnline) {
-      setOfflineDesc(magicInput.trim())
-      setOfflineAmount("")
-      setOfflineType("expense")
-      setOfflineCategory("General")
-      setShowOfflineForm(true)
-      return
-    }
-
-    if (!apiKey.trim()) {
-      setAiError("Configurá tu API key en Ajustes para usar el asistente de IA.")
-      setTimeout(() => setAiError(null), 4000)
+    // If offline or no API key, open manual entry form pre-filled with the typed text
+    if (!isOnline || !apiKey.trim()) {
+      openManualEntry(magicInput.trim())
+      setMagicInput("")
+      setAttachments([])
       return
     }
 
@@ -409,29 +436,7 @@ export function DashboardPage() {
     }
   }
 
-  const handleOfflineFormSubmit = () => {
-    const amount = parseFloat(offlineAmount.replace(",", "."))
-    if (!offlineDesc.trim() || isNaN(amount) || amount <= 0) return
-    const iconMap: Record<string, string> = {
-      Comida: "ShoppingCart", Transporte: "Car", Salidas: "Coffee",
-      Suscripciones: "Code", Deporte: "Dumbbell", Trabajo: "ArrowDownLeft", General: "ShoppingCart",
-    }
-    addTransaction({
-      description: offlineDesc.charAt(0).toUpperCase() + offlineDesc.slice(1),
-      amount,
-      type: offlineType,
-      icon: iconMap[offlineCategory] ?? "ShoppingCart",
-      category: offlineCategory,
-      date: new Date(),
-      currency: newCurrency,
-      txRate: newCurrency === "USD" ? getAppliedRate() : undefined,
-      exchangeRateType: newCurrency === "USD" ? newExRateType : null,
-    }, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 6000) })
-    setShowOfflineForm(false)
-    setMagicInput("")
-  }
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
     const next: Attachment[] = []
@@ -972,18 +977,38 @@ export function DashboardPage() {
           startRecording={startRecording}
           stopRecording={stopRecording}
           aiError={aiError}
+          onManualEntry={() => openManualEntry()}
         />
 
 
+        {/* Edit existing transaction */}
         <EditDialog
-          editingTx={editingTx}
-          setEditingTx={setEditingTx}
+          open={!!editingTx}
+          onClose={() => setEditingTx(null)}
+          title="Editar movimiento"
+          subtitle={editingTx?.description}
+          saveLabel="Guardar cambios"
           editForm={editForm}
           setEditForm={setEditForm}
           rateTypeOptions={rateTypeOptions}
           ratesLoading={ratesLoading}
           usdRate={usdRate}
-          handleSaveEdit={handleSaveEdit}
+          onSave={handleSaveEdit}
+          getEditRate={getEditRate}
+        />
+
+        {/* Manual new transaction (no-AI / offline) */}
+        <EditDialog
+          open={showManualEntry}
+          onClose={() => setShowManualEntry(false)}
+          title="Nuevo movimiento"
+          saveLabel="Agregar"
+          editForm={editForm}
+          setEditForm={setEditForm}
+          rateTypeOptions={rateTypeOptions}
+          ratesLoading={ratesLoading}
+          usdRate={usdRate}
+          onSave={handleSaveNew}
           getEditRate={getEditRate}
         />
 
@@ -996,69 +1021,6 @@ export function DashboardPage() {
           capturePhoto={capturePhoto}
         />
       </div>
-
-      {/* ── Offline manual entry dialog ─────────────────────── */}
-      <Dialog open={showOfflineForm} onOpenChange={setShowOfflineForm}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <WifiOff className="w-4 h-4 text-amber-500" />
-              Carga manual (sin conexión)
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Descripción</label>
-              <Input
-                value={offlineDesc}
-                onChange={e => setOfflineDesc(e.target.value)}
-                placeholder="Ej: Café, Supermercado..."
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
-              <Input
-                type="number"
-                min="0"
-                value={offlineAmount}
-                onChange={e => setOfflineAmount(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
-                <select
-                  value={offlineType}
-                  onChange={e => setOfflineType(e.target.value as "expense" | "income")}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="expense">Gasto</option>
-                  <option value="income">Ingreso</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
-                <select
-                  value={offlineCategory}
-                  onChange={e => setOfflineCategory(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  {["Comida","Transporte","Salidas","Suscripciones","Deporte","Educacion","Salud","Trabajo","General"].map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowOfflineForm(false)}>Cancelar</Button>
-            <Button onClick={handleOfflineFormSubmit} disabled={!offlineDesc.trim() || !offlineAmount}>
-              Guardar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ── Onboarding overlay ──────────────────────────────── */}
       {/* ── First-tx tooltip ────────────────────────────────── */}
