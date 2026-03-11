@@ -250,8 +250,8 @@ export function MagicBar({
             <form onSubmit={handleMagicSubmit}>
 
               {/* Text row */}
-              <div className="flex items-end gap-2 mb-2.5">
-                <Sparkles className="w-4 h-4 text-accent shrink-0 mb-0.5" />
+              <div className="flex items-center gap-2 mb-2.5">
+                <Sparkles className="w-4 h-4 text-accent shrink-0" />
                 <textarea
                   ref={textareaRef}
                   value={magicInput}
