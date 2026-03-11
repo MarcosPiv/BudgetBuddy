@@ -20,6 +20,7 @@ import {
   Moon,
   Bell,
   BellOff,
+  ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -109,6 +110,7 @@ export function SettingsPage() {
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
+  const [exOpen, setExOpen] = useState(false)
 
   const { theme, setTheme } = useTheme()
   const { isSupported: notifSupported, requestPermission } = useNotifications()
@@ -391,158 +393,189 @@ export function SettingsPage() {
               )}
             </AnimatePresence>
 
-            {/* ── USD Exchange Rate ──────────────────────────────── */}
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm text-muted-foreground flex items-center gap-2">
+            {/* ── USD Exchange Rate (collapsible) ───────────────── */}
+            <div className="flex flex-col gap-0">
+              {/* Collapsible header row */}
+              <button
+                type="button"
+                onClick={() => setExOpen(v => !v)}
+                className="flex items-center justify-between py-1 cursor-pointer group"
+              >
+                <Label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer group-hover:text-foreground transition-colors">
                   <DollarSign className="w-3.5 h-3.5" />
                   Tipo de cambio USD
+                  <span className="text-[10px] font-normal text-muted-foreground/70">
+                    · {isApiMode ? "Automático" : `Manual · $${localUsdRate}`}
+                  </span>
                 </Label>
-                {/* Mode toggle pill */}
-                <div className="flex items-center gap-1 rounded-full bg-secondary/70 p-1 border border-border">
-                  <button
-                    type="button"
-                    onClick={() => setLocalExMode("api")}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                      isApiMode
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Wifi className="w-3 h-3" />
-                    Automático
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLocalExMode("manual")}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                      !isApiMode
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <WifiOff className="w-3 h-3" />
-                    Manual
-                  </button>
-                </div>
-              </div>
+                <motion.div
+                  animate={{ rotate: exOpen ? 180 : 0 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                </motion.div>
+              </button>
 
-              {/* API mode panel */}
-              <AnimatePresence mode="wait">
-                {isApiMode ? (
+              <AnimatePresence initial={false}>
+                {exOpen && (
                   <motion.div
-                    key="api-panel"
+                    key="ex-body"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                     className="overflow-hidden"
                   >
-                    <div className="rounded-xl border border-border bg-secondary/30 p-4 flex flex-col gap-3">
-                      {/* Status row */}
+                    <div className="flex flex-col gap-3 pt-3">
+                      {/* Mode toggle pill */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {loading ? (
-                            <RefreshCw className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
-                          ) : error ? (
-                            <div className="w-2 h-2 rounded-full bg-destructive" />
-                          ) : (
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {loading
-                              ? "Conectando a DolarAPI..."
-                              : error
-                                ? "Sin conexión"
-                                : "DolarAPI · en vivo"}
-                          </span>
+                        <Label className="text-xs text-muted-foreground">Fuente</Label>
+                        <div className="flex items-center gap-1 rounded-full bg-secondary/70 p-1 border border-border">
+                          <button
+                            type="button"
+                            onClick={() => setLocalExMode("api")}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                              isApiMode
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <Wifi className="w-3 h-3" />
+                            Automático
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLocalExMode("manual")}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                              !isApiMode
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <WifiOff className="w-3 h-3" />
+                            Manual
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={refresh}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          Actualizar
-                        </button>
                       </div>
 
-                      {/* Rate cards grid */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {apiCards.map((c) => {
-                          const r = rates[c.key]
-                          const isSelected = selectedApiKey === c.key
-                          return (
-                            <motion.button
-                              key={c.key}
-                              type="button"
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => {
-                                setSelectedApiKey(c.key)
-                                if (r?.venta) setLocalUsdRate(r.venta.toString())
-                              }}
-                              className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
-                                isSelected
-                                  ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                                  : "border-border bg-card hover:bg-secondary/50"
-                              }`}
-                            >
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                  {c.emoji} {c.label}
-                                </span>
-                                <span className="text-sm font-bold tabular-nums text-foreground">
-                                  {r ? fmt(r.venta) : "—"}
-                                </span>
-                                {r && (
-                                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                                    C: {fmt(r.compra)}
+                      {/* API mode panel */}
+                      <AnimatePresence mode="wait">
+                        {isApiMode ? (
+                          <motion.div
+                            key="api-panel"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div className="rounded-xl border border-border bg-secondary/30 p-4 flex flex-col gap-3">
+                              {/* Status row */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {loading ? (
+                                    <RefreshCw className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+                                  ) : error ? (
+                                    <div className="w-2 h-2 rounded-full bg-destructive" />
+                                  ) : (
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                  )}
+                                  <span className="text-xs text-muted-foreground">
+                                    {loading
+                                      ? "Conectando a DolarAPI..."
+                                      : error
+                                        ? "Sin conexión"
+                                        : "DolarAPI · en vivo"}
                                   </span>
-                                )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={refresh}
+                                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  Actualizar
+                                </button>
                               </div>
-                              {isSelected && (
-                                <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                              )}
-                            </motion.button>
-                          )
-                        })}
-                      </div>
 
-                      <p className="text-[11px] text-muted-foreground">
-                        Fuente:{" "}
-                        <span className="font-medium text-foreground">
-                          dolarapi.com
-                        </span>{" "}
-                        · Los valores se actualizan automáticamente.
-                      </p>
-                    </div>
-                  </motion.div>
-                ) : (
-                  /* Manual mode panel */
-                  <motion.div
-                    key="manual-panel"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex flex-col gap-2">
-                      <Input
-                        id="usdRate"
-                        type="number"
-                        placeholder="1350"
-                        value={localUsdRate}
-                        onChange={(e) => setLocalUsdRate(e.target.value)}
-                        className="bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 tabular-nums font-mono"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        1 USD ={" "}
-                        <span className="font-semibold text-foreground tabular-nums">
-                          {localUsdRate || "..."} ARS
-                        </span>
-                        . Ingresá tu cotización preferida.
-                      </p>
+                              {/* Rate cards grid */}
+                              <div className="grid grid-cols-2 gap-2">
+                                {apiCards.map((c) => {
+                                  const r = rates[c.key]
+                                  const isSelected = selectedApiKey === c.key
+                                  return (
+                                    <motion.button
+                                      key={c.key}
+                                      type="button"
+                                      whileTap={{ scale: 0.96 }}
+                                      onClick={() => {
+                                        setSelectedApiKey(c.key)
+                                        if (r?.venta) setLocalUsdRate(r.venta.toString())
+                                      }}
+                                      className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
+                                        isSelected
+                                          ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                                          : "border-border bg-card hover:bg-secondary/50"
+                                      }`}
+                                    >
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                          {c.emoji} {c.label}
+                                        </span>
+                                        <span className="text-sm font-bold tabular-nums text-foreground">
+                                          {r ? fmt(r.venta) : "—"}
+                                        </span>
+                                        {r && (
+                                          <span className="text-[10px] text-muted-foreground tabular-nums">
+                                            C: {fmt(r.compra)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {isSelected && (
+                                        <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                      )}
+                                    </motion.button>
+                                  )
+                                })}
+                              </div>
+
+                              <p className="text-[11px] text-muted-foreground">
+                                Fuente:{" "}
+                                <span className="font-medium text-foreground">dolarapi.com</span>
+                                {" "}· Los valores se actualizan automáticamente.
+                              </p>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          /* Manual mode panel */
+                          <motion.div
+                            key="manual-panel"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div className="flex flex-col gap-2">
+                              <Input
+                                id="usdRate"
+                                type="number"
+                                placeholder="1350"
+                                value={localUsdRate}
+                                onChange={(e) => setLocalUsdRate(e.target.value)}
+                                className="bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 tabular-nums font-mono"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                1 USD ={" "}
+                                <span className="font-semibold text-foreground tabular-nums">
+                                  {localUsdRate || "..."} ARS
+                                </span>
+                                . Ingresá tu cotización preferida.
+                              </p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </motion.div>
                 )}
@@ -705,9 +738,9 @@ export function SettingsPage() {
 
                 {displayedKey && !editingKey ? (
                   /* Masked display when key is saved */
-                  <div className="flex items-center gap-2 h-11 px-3 rounded-lg bg-secondary/50 border border-border">
-                    <span className="flex-1 font-mono text-sm text-foreground tracking-wider">
-                      {displayedKey.slice(0, 8)}{"•".repeat(16)}
+                  <div className="flex items-center gap-2 h-11 px-3 rounded-lg bg-secondary/50 border border-border overflow-hidden">
+                    <span className="flex-1 min-w-0 font-mono text-sm text-foreground truncate">
+                      {displayedKey.slice(0, 12)}{"•".repeat(10)}
                     </span>
                     <button
                       type="button"

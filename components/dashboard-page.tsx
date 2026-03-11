@@ -680,13 +680,14 @@ export function DashboardPage() {
       <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
 
         {/* ── Sticky header ────────────────────────────────────── */}
-        <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 sm:px-6 border-b border-border bg-background/90 backdrop-blur-md">
-          {/* Left: logo + balance */}
+        <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-md">
+          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+          {/* Left: logo + balance (balance visible on sm+) */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">
               <Wallet className="w-4 h-4 text-primary-foreground" />
             </div>
-            <div className="flex flex-col leading-none min-w-0">
+            <div className="hidden sm:flex flex-col leading-none min-w-0">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
               </span>
@@ -767,6 +768,23 @@ export function DashboardPage() {
                 </AvatarFallback>
               </Avatar>
             </button>
+          </div>
+          </div>
+
+          {/* Mobile-only: prominent centered balance */}
+          <div className="sm:hidden px-4 pb-3 flex flex-col items-center gap-0.5">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
+            </span>
+            <motion.span
+              key={balance}
+              className={`text-3xl font-bold tabular-nums ${balance >= 0 ? "text-primary" : "text-destructive"}`}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              {balance < 0 ? "-" : ""}{formatCurrency(balance)}
+            </motion.span>
           </div>
         </header>
 
