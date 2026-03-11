@@ -24,8 +24,8 @@ import { TransactionList } from "./dashboard/transaction-list"
 import { MagicBar } from "./dashboard/magic-bar"
 import { ChatPanel } from "./dashboard/chat-panel"
 import { EditDialog, type EditForm } from "./dashboard/edit-dialog"
-import { DeleteDialog } from "./dashboard/delete-dialog"
 import { CameraModal } from "./dashboard/camera-modal"
+import { toast } from "sonner"
 
 // Shared utilities
 import {
@@ -117,7 +117,16 @@ export function DashboardPage() {
   const [longPressId, setLongPressId] = useState<string | null>(null)
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragActiveRef = useRef(false)
-  const [deletingTxId, setDeletingTxId] = useState<string | null>(null)
+  const handleDeleteWithUndo = (tx: (typeof transactions)[number]) => {
+    deleteTransaction(tx.id, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) })
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _id, ...rest } = tx
+    toast("Movimiento eliminado", {
+      description: tx.description,
+      action: { label: "Deshacer", onClick: () => addTransaction(rest) },
+      duration: 5000,
+    })
+  }
 
   // ── Offline manual entry ─────────────────────────────────────────────────────
   const [showOfflineForm, setShowOfflineForm] = useState(false)
@@ -895,7 +904,7 @@ export function DashboardPage() {
               lpTimerRef={lpTimerRef}
               usdRate={usdRate}
               openEdit={openEdit}
-              setDeletingTxId={setDeletingTxId}
+              onDelete={handleDeleteWithUndo}
               handleTouchStart={handleTouchStart}
               handleTouchEnd={handleTouchEnd}
             />
@@ -951,13 +960,6 @@ export function DashboardPage() {
           aiError={aiError}
         />
 
-        <DeleteDialog
-          deletingTxId={deletingTxId}
-          setDeletingTxId={setDeletingTxId}
-          transactions={transactions}
-          deleteTransaction={deleteTransaction}
-          onError={(msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) }}
-        />
 
         <EditDialog
           editingTx={editingTx}

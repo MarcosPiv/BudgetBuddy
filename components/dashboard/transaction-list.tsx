@@ -1,9 +1,10 @@
 "use client"
 
+import { useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Search, StickyNote, ShoppingCart,
+  Search, StickyNote, ShoppingCart, Wallet,
 } from "lucide-react"
 import { SwipeCard } from "./swipe-card"
 import { ReceiptImage } from "./receipt-image"
@@ -12,6 +13,30 @@ import { iconMap, formatDate } from "./shared"
 import type { Transaction } from "@/lib/app-context"
 
 const TX_PAGE = 6
+
+// ── Date separator helpers ────────────────────────────────────────────────────
+function getDateLabel(date: Date): string {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) return "Hoy"
+  if (diffDays === 1) return "Ayer"
+  if (diffDays < 7) {
+    const name = date.toLocaleDateString("es-AR", { weekday: "long" })
+    return name.charAt(0).toUpperCase() + name.slice(1)
+  }
+  const sameYear = date.getFullYear() === now.getFullYear()
+  return date.toLocaleDateString("es-AR", {
+    weekday: "short", day: "numeric", month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  })
+}
+
+type ListItem =
+  | { kind: "separator"; label: string; key: string }
+  | { kind: "tx"; tx: Transaction }
 
 interface TransactionListProps {
   filteredTransactions: Transaction[]
@@ -30,7 +55,7 @@ interface TransactionListProps {
   lpTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   usdRate: number
   openEdit: (tx: Transaction) => void
-  setDeletingTxId: (id: string | null) => void
+  onDelete: (tx: Transaction) => void
   handleTouchStart: (txId: string) => void
   handleTouchEnd: () => void
 }
@@ -52,10 +77,27 @@ export function TransactionList({
   lpTimerRef,
   usdRate,
   openEdit,
-  setDeletingTxId,
+  onDelete,
   handleTouchStart,
   handleTouchEnd,
 }: TransactionListProps) {
+
+  // Build flat list with date separators
+  const items = useMemo<ListItem[]>(() => {
+    const result: ListItem[] = []
+    let lastKey = ""
+    for (const tx of visibleTransactions) {
+      const d = new Date(tx.date)
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      if (key !== lastKey) {
+        lastKey = key
+        result.push({ kind: "separator", label: getDateLabel(d), key: `sep-${key}` })
+      }
+      result.push({ kind: "tx", tx })
+    }
+    return result
+  }, [visibleTransactions])
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -103,23 +145,70 @@ export function TransactionList({
         )}
       </div>
 
-      {/* List / empty states */}
+      {/* Empty state — no transactions in period */}
       {filteredTransactions.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          No hay movimientos en este periodo.
-        </div>
+        <motion.div
+          className="flex flex-col items-center gap-4 py-16 text-center"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary">
+            <Wallet className="w-7 h-7 text-muted-foreground/40" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Sin movimientos</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Registrá un gasto o ingreso usando<br />la barra de abajo
+            </p>
+          </div>
+        </motion.div>
+
+      /* Empty state — search with no results */
       ) : displayedTransactions.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground text-sm">
-          Sin resultados para &ldquo;{searchQuery}&rdquo;
-        </div>
+        <motion.div
+          className="flex flex-col items-center gap-3 py-12 text-center"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Search className="w-8 h-8 text-muted-foreground/30" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Sin resultados</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              No hay movimientos para &ldquo;{searchQuery}&rdquo;
+            </p>
+          </div>
+        </motion.div>
+
       ) : (
         <div className="flex flex-col gap-2">
           <AnimatePresence mode="popLayout">
-            {visibleTransactions.map((tx) => {
+            {items.map((item) => {
+              if (item.kind === "separator") {
+                return (
+                  <motion.div
+                    key={item.key}
+                    layout
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center gap-2 px-1 pt-2 pb-0.5"
+                  >
+                    <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider whitespace-nowrap">
+                      {item.label}
+                    </span>
+                    <div className="flex-1 h-px bg-border/50" />
+                  </motion.div>
+                )
+              }
+
+              const tx = item.tx
               const Icon = iconMap[tx.icon] || ShoppingCart
               const isIncome = tx.type === "income"
               const isExpanded = expandedTx === tx.id
               const isUsd = tx.currency === "USD"
+
               return (
                 <motion.div
                   key={tx.id}
@@ -137,7 +226,7 @@ export function TransactionList({
                     }}
                     onDragEnd={(swipedLeft, swipedRight) => {
                       setTimeout(() => { dragActiveRef.current = false }, 50)
-                      if (swipedLeft) setDeletingTxId(tx.id)
+                      if (swipedLeft) onDelete(tx)
                       else if (swipedRight) openEdit(tx)
                     }}
                   >
@@ -188,7 +277,7 @@ export function TransactionList({
                         <button
                           type="button"
                           className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-                          onClick={(e) => { e.stopPropagation(); setDeletingTxId(tx.id) }}
+                          onClick={(e) => { e.stopPropagation(); onDelete(tx) }}
                           aria-label="Eliminar movimiento"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -224,7 +313,7 @@ export function TransactionList({
                         <button
                           type="button"
                           className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-destructive/10 text-destructive text-sm font-medium cursor-pointer active:bg-destructive/20"
-                          onClick={() => { setDeletingTxId(tx.id); setLongPressId(null) }}
+                          onClick={() => { onDelete(tx); setLongPressId(null) }}
                         >
                           <Trash2 className="w-4 h-4" />
                           Eliminar
