@@ -6,7 +6,7 @@ import { useRef } from "react"
 import {
   Sparkles, Mic, Brain, BarChart3, ArrowRight, Wallet,
   Download, Smartphone, DollarSign, Camera, MessageCircle,
-  ShieldCheck, Repeat, Github, TrendingUp, Zap,
+  ShieldCheck, Repeat, Github, TrendingUp, Zap, Share,
 } from "lucide-react"
 import { useApp } from "@/lib/app-context"
 
@@ -163,9 +163,15 @@ export function LandingPage() {
   const { setView } = useApp()
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+  const [showIOSBanner, setShowIOSBanner] = useState(false)
 
   useEffect(() => {
-    if (window.matchMedia("(display-mode: standalone)").matches) setIsInstalled(true)
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+    if (standalone) { setIsInstalled(true); return }
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(navigator as any).standalone
+    setIsIOS(ios)
+    if (ios) setShowIOSBanner(true)
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent) }
     window.addEventListener("beforeinstallprompt", handler)
     return () => window.removeEventListener("beforeinstallprompt", handler)
@@ -301,15 +307,18 @@ export function LandingPage() {
           )}
         </motion.div>
 
-        {!installPrompt && !isInstalled && (
-          <motion.p
-            className="mt-4 text-xs text-muted-foreground/50 relative z-10"
+        {isIOS && !isInstalled && (
+          <motion.button
+            type="button"
+            onClick={() => setShowIOSBanner(v => !v)}
+            className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors cursor-pointer relative z-10"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1 }}
           >
-            En iPhone: Compartir → Agregar a pantalla de inicio
-          </motion.p>
+            <Smartphone className="w-3.5 h-3.5" />
+            Cómo instalar en iPhone
+          </motion.button>
         )}
 
         {/* Floating stat chips */}
@@ -493,6 +502,55 @@ export function LandingPage() {
           </button>
         </motion.div>
       </section>
+
+      {/* ── iOS install banner ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {isIOS && !isInstalled && showIOSBanner && (
+          <motion.div
+            className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-[env(safe-area-inset-bottom,1rem)] pt-1"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 32, stiffness: 280 }}
+          >
+            <div className="bg-card border border-border rounded-2xl shadow-2xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">
+                    <Wallet className="w-4 h-4 text-primary-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground leading-none">Instalar BudgetBuddy</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Acceso rápido desde tu pantalla de inicio</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowIOSBanner(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer p-1"
+                  aria-label="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {[
+                  { step: "1", text: "Tocá el botón", highlight: "Compartir", icon: <Share className="w-3.5 h-3.5 inline mx-0.5 text-primary" /> },
+                  { step: "2", text: "Elegí", highlight: "\"Agregar a pantalla de inicio\"", icon: null },
+                  { step: "3", text: "Tocá", highlight: "\"Agregar\"", icon: null },
+                ].map(({ step, text, highlight, icon }) => (
+                  <div key={step} className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary text-[11px] font-bold shrink-0">{step}</span>
+                    <p className="text-xs text-muted-foreground">
+                      {text} <span className="font-medium text-foreground">{highlight}</span>{icon}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Footer ───────────────────────────────────────────────────── */}
       <footer className="border-t border-border/50 px-5 py-6 lg:px-12">
