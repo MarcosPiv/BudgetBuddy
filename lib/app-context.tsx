@@ -79,6 +79,7 @@ interface AppState {
   // Navigation
   currentView: View
   setView: (view: View) => void
+  navDirection: "forward" | "back"
   // Transactions
   transactions: Transaction[]
   addTransaction: (t: Omit<Transaction, "id">, onError?: (msg: string) => void) => void
@@ -138,6 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loadingAuth, setLoadingAuth] = useState(true)
   const [currentView, setCurrentView] = useState<View>("landing")
+  const [navDirection, setNavDirection] = useState<"forward" | "back">("forward")
 
   // Ref so auth callbacks (closures) always read the latest view without stale state
   const currentViewRef = useRef<View>("landing")
@@ -147,6 +149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setView = (view: View, replace = false) => {
     currentViewRef.current = view
+    setNavDirection("forward")
     setCurrentView(view)
     if (typeof window !== "undefined") {
       if (AUTHENTICATED_VIEWS.includes(view)) {
@@ -168,20 +171,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Seed the initial history entry so there is always a state to pop to
     history.replaceState({ view: currentViewRef.current }, "")
 
+    // Double-back-to-exit: track presses from dashboard
+    const backPress = { count: 0, timer: null as ReturnType<typeof setTimeout> | null }
+
     const handlePopState = (e: PopStateEvent) => {
       const target = e.state?.view as View | undefined
       if (!target) return
-      // Logged-in user going back past dashboard → stay at dashboard
+
+      // Logged-in user going back past the authenticated stack
       if (userRef.current && !AUTHENTICATED_VIEWS.includes(target)) {
-        history.replaceState({ view: "dashboard" }, "")
+        backPress.count++
+        if (backPress.timer) clearTimeout(backPress.timer)
+
+        if (backPress.count >= 2) {
+          // Second press within 2.5 s → allow exit (navigate to landing, PWA closes naturally)
+          backPress.count = 0
+          currentViewRef.current = "landing"
+          setNavDirection("back")
+          setCurrentView("landing")
+          sessionStorage.removeItem("bb_view")
+          return
+        }
+
+        // First press: bounce back and show hint toast
+        history.pushState({ view: "dashboard" }, "")
         currentViewRef.current = "dashboard"
+        setNavDirection("back")
         setCurrentView("dashboard")
         sessionStorage.setItem("bb_view", "dashboard")
+        window.dispatchEvent(new CustomEvent("bb_exit_hint"))
+        backPress.timer = setTimeout(() => { backPress.count = 0 }, 2500)
         return
       }
+
       // Not logged in trying to reach authenticated view → block
       if (!userRef.current && AUTHENTICATED_VIEWS.includes(target)) return
+
       currentViewRef.current = target
+      setNavDirection("back")
       setCurrentView(target)
       if (AUTHENTICATED_VIEWS.includes(target)) {
         sessionStorage.setItem("bb_view", target)
@@ -532,6 +559,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsPasswordRecovery,
     currentView,
     setView,
+    navDirection,
     transactions,
     addTransaction,
     deleteTransaction,
@@ -565,7 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     customRange,
     setCustomRange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [user, loadingAuth, isPasswordRecovery, currentView, transactions, isProcessing,
+  }), [user, loadingAuth, isPasswordRecovery, currentView, navDirection, transactions, isProcessing,
        isOnline, pendingOfflineCount,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
        monthlyBudget, profileMode, usdRate, exchangeRateMode, timeFilter, customRange])

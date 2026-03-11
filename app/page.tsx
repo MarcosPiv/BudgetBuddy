@@ -10,6 +10,7 @@ import { BiometricLock } from "@/components/biometric-lock"
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
 import { DashboardSkeleton } from "@/components/dashboard/skeleton"
+import { toast } from "sonner"
 
 // Code-split heavy pages — only load the JS chunk when the view is active
 const DashboardPage = dynamic(
@@ -30,7 +31,7 @@ const AnalyticsPage = dynamic(
 )
 
 function AppRouter() {
-  const { currentView, loadingAuth, user } = useApp()
+  const { currentView, loadingAuth, user, navDirection } = useApp()
   const [locked, setLocked] = useState(() => {
     if (typeof window === "undefined") return false
     return (
@@ -43,6 +44,13 @@ function AppRouter() {
   useEffect(() => {
     if (!loadingAuth && !user) setLocked(false)
   }, [loadingAuth, user])
+
+  // Toast hint when user swipes back from dashboard (first press of double-back-to-exit)
+  useEffect(() => {
+    const handler = () => toast("Deslizá de nuevo para salir", { duration: 2000, id: "exit-hint" })
+    window.addEventListener("bb_exit_hint", handler)
+    return () => window.removeEventListener("bb_exit_hint", handler)
+  }, [])
 
   if (loadingAuth) {
     // If the user had an authenticated session, show the dashboard skeleton
@@ -72,10 +80,10 @@ function AppRouter() {
     <AnimatePresence mode="wait">
       <motion.div
         key={currentView}
-        initial={{ opacity: 0 }}
+        initial={navDirection === "back" ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
+        transition={{ duration: 0.15 }}
         className="min-h-screen"
       >
         {currentView === "landing" && <LandingPage />}
