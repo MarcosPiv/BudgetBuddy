@@ -264,6 +264,7 @@ export function MagicBar({
                   }}
                   placeholder="Pague 12000 en el super..."
                   rows={1}
+                  maxLength={300}
                   className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0"
                   disabled={isProcessing}
                 />
@@ -297,6 +298,15 @@ export function MagicBar({
                   )}
                 </Button>
               </div>
+
+              {/* Character counter */}
+              {magicInput.length > 0 && (
+                <div className="flex justify-end mb-1 -mt-1">
+                  <span className={`text-[10px] tabular-nums ${magicInput.length >= 270 ? "text-destructive" : "text-muted-foreground/50"}`}>
+                    {magicInput.length}/300
+                  </span>
+                </div>
+              )}
 
               {/* Multimodal toolbar */}
               <div className="grid grid-cols-5 gap-1 pt-2 border-t border-border/40">

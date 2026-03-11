@@ -138,21 +138,29 @@ export function ChatPanel({
               onSubmit={handleChatSubmit}
               className="flex items-end gap-2 bg-secondary/50 rounded-xl px-3 py-2 border border-border/60 focus-within:border-accent/50 transition-colors"
             >
-              <textarea
-                ref={chatTextareaRef}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    e.currentTarget.form?.requestSubmit()
-                  }
-                }}
-                placeholder={isChatRecording ? "Grabando audio..." : "Pregunta sobre tus finanzas..."}
-                disabled={isChatProcessing || isChatRecording}
-                rows={1}
-                className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0.5"
-              />
+              <div className="flex-1 min-w-0 flex flex-col">
+                <textarea
+                  ref={chatTextareaRef}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      e.currentTarget.form?.requestSubmit()
+                    }
+                  }}
+                  placeholder={isChatRecording ? "Grabando audio..." : "Pregunta sobre tus finanzas..."}
+                  disabled={isChatProcessing || isChatRecording}
+                  rows={1}
+                  maxLength={400}
+                  className="w-full border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0.5"
+                />
+                {chatInput.length > 0 && (
+                  <span className={`text-[10px] tabular-nums text-right mt-0.5 ${chatInput.length >= 360 ? "text-destructive" : "text-muted-foreground/40"}`}>
+                    {chatInput.length}/400
+                  </span>
+                )}
+              </div>
               <Button
                 type="button"
                 size="icon"
