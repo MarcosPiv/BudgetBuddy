@@ -43,7 +43,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" storageKey="bb_theme" enableSystem={false}>
           <PwaRegister />
           {children}
-          <Toaster position="top-center" richColors closeButton offset="calc(env(safe-area-inset-top, 0px) + 16px)" />
+          <Toaster position="bottom-right" richColors closeButton offset="calc(env(safe-area-inset-bottom, 0px) + 96px)" />
         </ThemeProvider>
       </body>
     </html>

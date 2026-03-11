@@ -188,7 +188,7 @@ export function LandingPage() {
     <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
 
       {/* ── Nav ──────────────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-5 py-4 lg:px-12 relative z-10">
+      <header className="flex items-center justify-between px-5 pb-4 lg:px-12 relative z-10" style={{ paddingTop: "max(1rem, env(safe-area-inset-top, 1rem))" }}>
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary shrink-0">
             <Wallet className="w-5 h-5 text-primary-foreground" />
