@@ -16,6 +16,10 @@ import {
   Check,
   Download,
   FileText,
+  TrendingUp,
+  TrendingDown,
+  ChevronDown,
+  Minus,
 } from "lucide-react"
 import {
   LineChart,
@@ -412,6 +416,92 @@ export function AnalyticsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, usdRate])
 
+  // ── Projection toggle ─────────────────────────────────────────────────────
+  const [showProjection, setShowProjection] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("bb_show_projection") === "true"
+  )
+  const toggleProjection = () => setShowProjection(v => {
+    const next = !v
+    localStorage.setItem("bb_show_projection", String(next))
+    return next
+  })
+
+  // ── Spending projection (history-weighted) ────────────────────────────────
+  const projectionData = useMemo(() => {
+    const n = new Date()
+    const curMonth = n.getMonth()
+    const curYear = n.getFullYear()
+    const daysElapsed = n.getDate()
+    const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate()
+    const remainingDays = daysInMonth - daysElapsed
+
+    const currentMonthExp = transactions
+      .filter(tx => {
+        const d = new Date(tx.date)
+        return tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear
+      })
+      .reduce((a, tx) => a + toArs(tx), 0)
+
+    if (daysElapsed < 1 || currentMonthExp === 0) return null
+
+    const currentDailyRate = currentMonthExp / daysElapsed
+
+    // Last 3 months: weight [3, 2, 1] (most recent = 3)
+    const historical = [1, 2, 3].map((offset, idx) => {
+      const d = new Date(curYear, curMonth - offset, 1)
+      const m = d.getMonth()
+      const y = d.getFullYear()
+      const daysInM = new Date(y, m + 1, 0).getDate()
+      const total = transactions
+        .filter(tx => {
+          const td = new Date(tx.date)
+          return tx.type === "expense" && td.getMonth() === m && td.getFullYear() === y
+        })
+        .reduce((a, tx) => a + toArs(tx), 0)
+      return {
+        label: MONTH_LABELS[m],
+        total: Math.round(total),
+        dailyRate: daysInM > 0 ? total / daysInM : 0,
+        weight: 3 - idx, // weights: 3, 2, 1
+        hasData: total > 0,
+      }
+    })
+
+    const monthsWithData = historical.filter(m => m.hasData)
+    let weightedHistRate = 0
+    if (monthsWithData.length > 0) {
+      const totalW = monthsWithData.reduce((a, m) => a + m.weight, 0)
+      weightedHistRate = monthsWithData.reduce((a, m) => a + m.dailyRate * m.weight, 0) / totalW
+    }
+
+    // Blend: more history → more weight on historical
+    const histWeight = monthsWithData.length >= 3 ? 0.4 : monthsWithData.length === 2 ? 0.3 : monthsWithData.length === 1 ? 0.2 : 0
+    const blendedRate = currentDailyRate * (1 - histWeight) + weightedHistRate * histWeight
+    const projectedTotal = Math.round(currentMonthExp + blendedRate * remainingDays)
+
+    const histMonthlyAvg = monthsWithData.length > 0
+      ? monthsWithData.reduce((a, m) => a + m.total, 0) / monthsWithData.length
+      : 0
+    const trendPct = histMonthlyAvg > 0
+      ? ((projectedTotal - histMonthlyAvg) / histMonthlyAvg) * 100
+      : 0
+
+    return {
+      currentExpenses: Math.round(currentMonthExp),
+      projectedTotal,
+      daysElapsed,
+      daysInMonth,
+      remainingDays,
+      currentDailyRate: Math.round(currentDailyRate),
+      historicalDailyRate: Math.round(weightedHistRate),
+      histMonthlyAvg: Math.round(histMonthlyAvg),
+      monthsWithData: monthsWithData.length,
+      trendPct,
+      historical,
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, usdRate])
+
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalRecurringArs = recurringTemplates
     .filter(t => t.type === "expense")
@@ -499,6 +589,142 @@ export function AnalyticsPage() {
               Todavía no hay suficientes datos para mostrar la tendencia.
             </div>
           )}
+        </motion.div>
+
+        {/* ── Spending Projection ──────────────────────────────────── */}
+        <motion.div
+          className="rounded-2xl border border-border bg-card overflow-hidden"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.04 }}
+        >
+          {/* Collapsible header */}
+          <button
+            type="button"
+            onClick={toggleProjection}
+            className="w-full flex items-center justify-between px-4 py-3.5 cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-accent shrink-0" />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Proyección · {MONTH_LABELS[now.getMonth()]}
+              </p>
+              {projectionData && !showProjection && (
+                <span className="text-sm font-bold text-foreground tabular-nums ml-1">
+                  {fmtArs(projectionData.projectedTotal)}
+                </span>
+              )}
+            </div>
+            <motion.div animate={{ rotate: showProjection ? 180 : 0 }} transition={{ duration: 0.25 }}>
+              <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </motion.div>
+          </button>
+
+          <AnimatePresence initial={false}>
+            {showProjection && (
+              <motion.div
+                key="proj-body"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden"
+              >
+                {!projectionData ? (
+                  <div className="px-4 pb-5 pt-1 text-center">
+                    <TrendingUp className="w-8 h-8 text-muted-foreground/25 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Registrá gastos este mes para ver la proyección.</p>
+                  </div>
+                ) : (
+                  <div className="px-4 pb-5 pt-1 flex flex-col gap-4 border-t border-border">
+
+                    {/* Hero: projected total + trend */}
+                    <div className="flex items-end justify-between pt-1">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground mb-0.5">
+                          Proyectado al {projectionData.daysInMonth}/{now.getMonth() + 1}
+                        </p>
+                        <p className="text-3xl font-bold tabular-nums text-foreground">
+                          {fmtArs(projectionData.projectedTotal)}
+                        </p>
+                      </div>
+                      {projectionData.monthsWithData >= 1 && (
+                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          Math.abs(projectionData.trendPct) < 5
+                            ? "bg-secondary text-muted-foreground"
+                            : projectionData.trendPct > 0
+                              ? "bg-destructive/10 text-destructive"
+                              : "bg-primary/10 text-primary"
+                        }`}>
+                          {Math.abs(projectionData.trendPct) < 5
+                            ? <Minus className="w-3 h-3" />
+                            : projectionData.trendPct > 0
+                              ? <TrendingUp className="w-3 h-3" />
+                              : <TrendingDown className="w-3 h-3" />}
+                          {Math.abs(projectionData.trendPct) < 5
+                            ? "Similar al promedio"
+                            : `${projectionData.trendPct > 0 ? "+" : ""}${projectionData.trendPct.toFixed(0)}% vs promedio`}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress bar: current vs projected */}
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
+                        <span>Gastado hasta hoy · {fmtArs(projectionData.currentExpenses)}</span>
+                        <span>{Math.round((projectionData.currentExpenses / projectionData.projectedTotal) * 100)}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-accent"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min((projectionData.currentExpenses / projectionData.projectedTotal) * 100, 100)}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        Quedan <span className="font-medium text-foreground">{projectionData.remainingDays} días</span> · ritmo actual {fmtArs(projectionData.currentDailyRate)}/día
+                        {projectionData.monthsWithData >= 1 && (
+                          <> · histórico {fmtArs(projectionData.historicalDailyRate)}/día</>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Historical months chips */}
+                    {projectionData.monthsWithData >= 1 && (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground mb-2">Últimos meses</p>
+                        <div className="flex gap-2">
+                          {projectionData.historical.map((m) => (
+                            <div
+                              key={m.label}
+                              className={`flex-1 rounded-xl border px-3 py-2.5 text-center ${
+                                m.hasData ? "border-border bg-secondary/30" : "border-border/40 bg-secondary/10 opacity-50"
+                              }`}
+                            >
+                              <p className="text-[10px] text-muted-foreground capitalize mb-1">{m.label}</p>
+                              <p className="text-sm font-semibold tabular-nums text-foreground">
+                                {m.hasData ? fmtArs(m.total) : "—"}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Data quality notice */}
+                    {projectionData.monthsWithData < 2 && (
+                      <p className="text-[11px] text-muted-foreground/60 border border-border/50 rounded-lg px-3 py-2 bg-secondary/20">
+                        {projectionData.monthsWithData === 0
+                          ? "Proyección lineal — sin historial previo. Más preciso con 2-3 meses de datos."
+                          : "Proyección con 1 mes de historial. Más preciso con 2-3 meses de datos."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* ── Category Breakdown (Donut) ──────────────────────────── */}
