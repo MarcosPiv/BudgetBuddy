@@ -23,24 +23,29 @@ export interface AIAttachment {
 const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft"]
 const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
 
-const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. Tu única tarea es analizar texto, imágenes o audio en lenguaje natural y extraer información de una transacción financiera.
+const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. Tu única tarea es analizar texto, imágenes o audio en lenguaje natural y extraer transacciones financieras.
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown, sin backticks.
 
-Formato exacto cuando hay transacción:
+Si hay UNA sola transacción:
 {"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"ShoppingCart"}
+
+Si el mensaje menciona MÚLTIPLES transacciones, devolvé un array JSON (una por item):
+[{"type":"expense","description":"...","amount":número,"category":"...","icon":"..."},{"type":"expense","description":"...","amount":número,"category":"...","icon":"..."}]
 
 Para ingresos usar type:"income".
 
-Si el contenido NO describe una transacción financiera respondé exactamente:
+Si el contenido NO describe ninguna transacción financiera respondé exactamente:
 {"type":"unknown"}
 
 Reglas:
 - amount siempre es un número positivo (sin signos)
+- description: primera letra en mayúscula, máx 35 chars
 - Si hay imagen de ticket o factura: extraé el monto total y el tipo de establecimiento
 - Si hay audio: transcribí y analizá el contenido
 - type "income" = cobro, ingreso, salario, venta, me pagaron, transferencia recibida
 - type "expense" = gasto, compra, pago, transferencia enviada, gasté
+- Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") aplicalo como contexto de categoría para todos los items de ese mensaje
 - category y icon según el tema:
   * Comida/supermercado/delivery → "Comida", "ShoppingCart"
   * Transporte/nafta/peaje/uber/taxi/colectivo → "Transporte", "Car"
@@ -48,7 +53,7 @@ Reglas:
   * Netflix/Spotify/software/app/suscripción → "Suscripciones", "Code"
   * Gym/deporte/medicina/salud → "Deporte", "Dumbbell"
   * Trabajo/freelance/salario/cobro → "Trabajo", "ArrowDownLeft"
-  * Ropa/shopping/electrodoméstico → "General", "ShoppingCart"
+  * Librería/papelería/útiles/ropa/shopping/electrodoméstico → "General", "ShoppingCart"
   * Si no entra en ninguna → "General", "ShoppingCart"
 - Para ingresos preferir icon "ArrowDownLeft"
 - Si dicen "hola", preguntas o texto sin transacción → {"type":"unknown"}`
@@ -73,29 +78,47 @@ function buildUserMessage(input: string): string {
     : "Analizá el contenido adjunto y extraé la transacción financiera si existe."
 }
 
-function extractAndValidate(raw: string): ParsedTransaction {
-  const clean = raw.trim().replace(/```json|```/g, "").trim()
-  const match = clean.match(/\{[\s\S]*?\}/)
-  if (!match) throw new Error("La IA no devolvió una respuesta válida.")
+function capitalize(s: string): string {
+  if (!s) return s
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
 
-  let parsed: ParsedTransaction
-  try {
-    parsed = JSON.parse(match[0])
-  } catch {
-    throw new Error("Error al interpretar la respuesta de la IA.")
+function validateOne(raw: ParsedTransaction): ParsedTransaction {
+  if (!["expense", "income"].includes(raw.type)) raw.type = "expense"
+  if (typeof raw.amount !== "number" || raw.amount <= 0) throw new Error("Monto inválido en la respuesta.")
+  if (!VALID_ICONS.includes(raw.icon)) raw.icon = "ShoppingCart"
+  if (!VALID_CATEGORIES.includes(raw.category)) raw.category = "General"
+  if (!raw.description?.trim()) raw.description = "Transacción"
+  raw.description = capitalize(raw.description.slice(0, 40))
+  return raw
+}
+
+function extractAndValidate(raw: string): ParsedTransaction | ParsedTransaction[] {
+  const clean = raw.trim().replace(/```json|```/g, "").trim()
+
+  // Try to find array first, then object
+  const arrMatch = clean.match(/\[[\s\S]*\]/)
+  const objMatch = clean.match(/\{[\s\S]*?\}/)
+
+  // Array of transactions
+  if (arrMatch) {
+    let parsed: ParsedTransaction[]
+    try { parsed = JSON.parse(arrMatch[0]) } catch { throw new Error("Error al interpretar la respuesta de la IA.") }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("La IA no devolvió transacciones.")
+    return parsed
+      .filter(item => item.type !== "unknown")
+      .map(validateOne)
   }
+
+  // Single transaction object
+  if (!objMatch) throw new Error("La IA no devolvió una respuesta válida.")
+  let parsed: ParsedTransaction
+  try { parsed = JSON.parse(objMatch[0]) } catch { throw new Error("Error al interpretar la respuesta de la IA.") }
 
   if (!parsed.type) throw new Error("Respuesta incompleta de la IA.")
   if (parsed.type === "unknown") return { type: "unknown", description: "", amount: 0, category: "", icon: "" }
 
-  if (!["expense", "income"].includes(parsed.type)) parsed.type = "expense"
-  if (typeof parsed.amount !== "number" || parsed.amount <= 0) throw new Error("Monto inválido en la respuesta.")
-  if (!VALID_ICONS.includes(parsed.icon)) parsed.icon = "ShoppingCart"
-  if (!VALID_CATEGORIES.includes(parsed.category)) parsed.category = "General"
-  if (!parsed.description?.trim()) parsed.description = "Transacción"
-  parsed.description = parsed.description.slice(0, 40)
-
-  return parsed
+  return validateOne(parsed)
 }
 
 // Key prefix validation — called before any network request to fail fast
@@ -152,7 +175,7 @@ async function transcribeWithWhisper(apiKey: string, file: File): Promise<string
 }
 
 // ── Claude (Anthropic) ────────────────────────────────────────────────────────
-async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("claude", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
@@ -185,7 +208,7 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
     },
     body: JSON.stringify({
       model: "claude-3-5-haiku-20241022",
-      max_tokens: 150,
+      max_tokens: 400,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent }],
     }),
@@ -235,7 +258,7 @@ async function callClaudeChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
-async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("openai", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
@@ -268,9 +291,8 @@ async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachm
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      max_tokens: 150,
+      max_tokens: 400,
       temperature: 0.1,
-      response_format: images.length > 0 ? undefined : { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userContent },
@@ -328,7 +350,7 @@ async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── Gemini (Google) ───────────────────────────────────────────────────────────
-async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction> {
+async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("gemini", apiKey)
   const parts: object[] = []
 
@@ -348,7 +370,7 @@ async function callGemini(apiKey: string, input: string, attachments?: AIAttachm
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts }],
         generationConfig: {
-          maxOutputTokens: 150,
+          maxOutputTokens: 400,
           temperature: 0.1,
           responseMimeType: "application/json",
         },
@@ -419,7 +441,7 @@ export async function callAI(
   apiKey: string,
   input: string,
   attachments?: AIAttachment[]
-): Promise<ParsedTransaction> {
+): Promise<ParsedTransaction | ParsedTransaction[]> {
   try {
     if (provider === "claude") return await callClaude(apiKey, input, attachments)
     if (provider === "openai") return await callOpenAI(apiKey, input, attachments)

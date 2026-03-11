@@ -7,6 +7,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
@@ -116,6 +118,13 @@ export function DashboardPage() {
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragActiveRef = useRef(false)
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null)
+
+  // ── Offline manual entry ─────────────────────────────────────────────────────
+  const [showOfflineForm, setShowOfflineForm] = useState(false)
+  const [offlineDesc, setOfflineDesc] = useState("")
+  const [offlineAmount, setOfflineAmount] = useState("")
+  const [offlineType, setOfflineType] = useState<"expense" | "income">("expense")
+  const [offlineCategory, setOfflineCategory] = useState("General")
 
   // ── Search / view state ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
@@ -255,6 +264,16 @@ export function DashboardPage() {
     e.preventDefault()
     if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
 
+    // If offline, open manual entry form instead of calling AI
+    if (!isOnline) {
+      setOfflineDesc(magicInput.trim())
+      setOfflineAmount("")
+      setOfflineType("expense")
+      setOfflineCategory("General")
+      setShowOfflineForm(true)
+      return
+    }
+
     if (!apiKey.trim()) {
       setAiError("Configurá tu API key en Ajustes para usar el asistente de IA.")
       setTimeout(() => setAiError(null), 4000)
@@ -288,18 +307,20 @@ export function DashboardPage() {
         })),
       )
 
-      const result = await callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined)
+      const aiResult = await callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined)
+      const results = Array.isArray(aiResult) ? aiResult : [aiResult]
+      const valid = results.filter(r => r.type !== "unknown")
 
-      if (result.type === "unknown") {
+      if (valid.length === 0) {
         setAiError("No detecté una transacción. Describí un gasto o ingreso (ej: 'gasté 5000 en comida').")
         setTimeout(() => setAiError(null), 5000)
         return
       }
 
-      // Upload receipt image to Supabase Storage (best-effort)
+      // Upload receipt image to Supabase Storage (best-effort, only for single transactions)
       let receiptUrl: string | undefined
       const imageAtt = capturedAttachments.find(a => a.type === "image")
-      if (imageAtt && user) {
+      if (imageAtt && user && valid.length === 1) {
         try {
           const compressed = await compressImage(imageAtt.file)
           const path = `${user.id}/${Date.now()}.jpg`
@@ -312,23 +333,25 @@ export function DashboardPage() {
         }
       }
 
-      addTransaction({
-        description: result.description,
-        amount: result.amount,
-        type: result.type,
-        icon: result.icon,
-        category: result.category,
-        date: txDate,
-        currency: curr,
-        amountUsd: curr === "USD" ? result.amount : undefined,
-        txRate: curr === "USD" ? appliedRate : undefined,
-        exchangeRateType: rateType,
-        observation: obs,
-        receiptUrl,
-      }, (msg) => {
-        setAiError(msg)
-        setTimeout(() => setAiError(null), 6000)
-      })
+      for (const result of valid) {
+        addTransaction({
+          description: result.description,
+          amount: result.amount,
+          type: result.type,
+          icon: result.icon,
+          category: result.category,
+          date: txDate,
+          currency: curr,
+          amountUsd: curr === "USD" ? result.amount : undefined,
+          txRate: curr === "USD" ? appliedRate : undefined,
+          exchangeRateType: rateType,
+          observation: obs,
+          receiptUrl: valid.length === 1 ? receiptUrl : undefined,
+        }, (msg) => {
+          setAiError(msg)
+          setTimeout(() => setAiError(null), 6000)
+        })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al procesar."
       setAiError(msg)
@@ -336,6 +359,28 @@ export function DashboardPage() {
     } finally {
       setIsProcessing(false)
     }
+  }
+
+  const handleOfflineFormSubmit = () => {
+    const amount = parseFloat(offlineAmount.replace(",", "."))
+    if (!offlineDesc.trim() || isNaN(amount) || amount <= 0) return
+    const iconMap: Record<string, string> = {
+      Comida: "ShoppingCart", Transporte: "Car", Salidas: "Coffee",
+      Suscripciones: "Code", Deporte: "Dumbbell", Trabajo: "ArrowDownLeft", General: "ShoppingCart",
+    }
+    addTransaction({
+      description: offlineDesc.charAt(0).toUpperCase() + offlineDesc.slice(1),
+      amount,
+      type: offlineType,
+      icon: iconMap[offlineCategory] ?? "ShoppingCart",
+      category: offlineCategory,
+      date: new Date(),
+      currency: newCurrency,
+      txRate: newCurrency === "USD" ? getAppliedRate() : undefined,
+      exchangeRateType: newCurrency === "USD" ? newExRateType : null,
+    }, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 6000) })
+    setShowOfflineForm(false)
+    setMagicInput("")
   }
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -872,6 +917,69 @@ export function DashboardPage() {
           capturePhoto={capturePhoto}
         />
       </div>
+
+      {/* ── Offline manual entry dialog ─────────────────────── */}
+      <Dialog open={showOfflineForm} onOpenChange={setShowOfflineForm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <WifiOff className="w-4 h-4 text-amber-500" />
+              Carga manual (sin conexión)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Descripción</label>
+              <Input
+                value={offlineDesc}
+                onChange={e => setOfflineDesc(e.target.value)}
+                placeholder="Ej: Café, Supermercado..."
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
+              <Input
+                type="number"
+                min="0"
+                value={offlineAmount}
+                onChange={e => setOfflineAmount(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
+                <select
+                  value={offlineType}
+                  onChange={e => setOfflineType(e.target.value as "expense" | "income")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Categoría</label>
+                <select
+                  value={offlineCategory}
+                  onChange={e => setOfflineCategory(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {["Comida","Transporte","Salidas","Suscripciones","Deporte","Educacion","Salud","Trabajo","General"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowOfflineForm(false)}>Cancelar</Button>
+            <Button onClick={handleOfflineFormSubmit} disabled={!offlineDesc.trim() || !offlineAmount}>
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Onboarding overlay ──────────────────────────────── */}
       <AnimatePresence>
