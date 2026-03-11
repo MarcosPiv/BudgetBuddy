@@ -96,7 +96,7 @@ export function MagicBar({
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = "auto"
-    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
+    ta.style.height = `${Math.min(ta.scrollHeight, 80)}px`
   }, [magicInput])
 
   return (
@@ -265,7 +265,7 @@ export function MagicBar({
                   placeholder="Pague 12000 en el super..."
                   rows={1}
                   maxLength={300}
-                  className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0"
+                  className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-y-auto leading-5 py-0 max-h-[80px]"
                   disabled={isProcessing}
                 />
 
