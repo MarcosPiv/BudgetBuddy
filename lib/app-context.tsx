@@ -141,8 +141,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Ref so auth callbacks (closures) always read the latest view without stale state
   const currentViewRef = useRef<View>("landing")
+  // Ref for user so the popstate closure (created once on mount) can read current value
+  const userRef = useRef<User | null>(null)
+  useEffect(() => { userRef.current = user }, [user])
 
-  const setView = (view: View) => {
+  const setView = (view: View, replace = false) => {
     currentViewRef.current = view
     setCurrentView(view)
     if (typeof window !== "undefined") {
@@ -151,8 +154,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         sessionStorage.removeItem("bb_view")
       }
+      if (replace) {
+        history.replaceState({ view }, "")
+      } else {
+        history.pushState({ view }, "")
+      }
     }
   }
+
+  // ── Native back-gesture / Android back button support ──────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    // Seed the initial history entry so there is always a state to pop to
+    history.replaceState({ view: currentViewRef.current }, "")
+
+    const handlePopState = (e: PopStateEvent) => {
+      const target = e.state?.view as View | undefined
+      if (!target) return
+      // Logged-in user going back past dashboard → stay at dashboard
+      if (userRef.current && !AUTHENTICATED_VIEWS.includes(target)) {
+        history.replaceState({ view: "dashboard" }, "")
+        currentViewRef.current = "dashboard"
+        setCurrentView("dashboard")
+        sessionStorage.setItem("bb_view", "dashboard")
+        return
+      }
+      // Not logged in trying to reach authenticated view → block
+      if (!userRef.current && AUTHENTICATED_VIEWS.includes(target)) return
+      currentViewRef.current = target
+      setCurrentView(target)
+      if (AUTHENTICATED_VIEWS.includes(target)) {
+        sessionStorage.setItem("bb_view", target)
+      } else {
+        sessionStorage.removeItem("bb_view")
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -312,7 +352,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setApiKeyClaude("")
         setApiKeyOpenAI("")
         setApiKeyGemini("")
-        setView("landing")
+        setView("landing", true)
       }
     })
 
@@ -330,7 +370,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setApiKeyClaude("")
     setApiKeyOpenAI("")
     setApiKeyGemini("")
-    setView("landing")
+    setView("landing", true)
     // Fire-and-forget — onAuthStateChange will handle any remaining cleanup
     supabase.auth.signOut()
   }
