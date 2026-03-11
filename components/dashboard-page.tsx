@@ -729,7 +729,7 @@ export function DashboardPage() {
 
         {/* ── Sticky header ────────────────────────────────────── */}
         <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-md">
-          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center justify-between px-4 pb-3 sm:px-6" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}>
           {/* Left: logo + balance (balance visible on sm+) */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">

@@ -256,42 +256,37 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
       <div className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[400px] rounded-full bg-accent/5 blur-[120px]" />
 
-      <motion.button
-        className="fixed z-50 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-        style={{ top: "max(1.5rem, env(safe-area-inset-top))", left: "max(1.5rem, env(safe-area-inset-left))" }}
-        onClick={() => setView("dashboard")}
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.4 }}
+      {/* Sticky header */}
+      <header
+        className="sticky top-0 z-30 flex items-center gap-3 px-4 pb-3 border-b border-border bg-background/90 backdrop-blur-md"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
       >
-        <ArrowLeft className="w-4 h-4" />
-        <span className="text-sm">Volver</span>
-      </motion.button>
+        <motion.button
+          type="button"
+          onClick={() => setView("dashboard")}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-sm">Volver</span>
+        </motion.button>
+        <div className="flex items-center gap-2 ml-1">
+          <Brain className="w-4 h-4 text-accent" />
+          <span className="text-sm font-semibold text-foreground">Ajustes</span>
+        </div>
+      </header>
 
       <motion.div
-        className="w-full max-w-lg"
-        initial={{ opacity: 0, y: 30 }}
+        className="flex-1 px-4 py-6 w-full max-w-lg mx-auto"
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="glass rounded-2xl border border-border p-8">
-          {/* Header */}
-          <div className="flex flex-col items-center gap-3 mb-8">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-accent/20">
-              <Brain className="w-6 h-6 text-accent" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground text-balance text-center">
-              Configura tu Cerebro Financiero
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm leading-relaxed">
-              Elige tu perfil financiero, configura la moneda y conecta tu clave
-              de API.
-            </p>
-          </div>
-
           <div className="flex flex-col gap-5">
             {/* Appearance toggle */}
             <div className="flex items-center justify-between">

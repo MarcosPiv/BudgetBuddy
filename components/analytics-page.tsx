@@ -510,7 +510,7 @@ export function AnalyticsPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-border bg-background/90 backdrop-blur-md">
+      <header className="sticky top-0 z-30 flex items-center gap-3 px-4 pb-3 sm:px-6 border-b border-border bg-background/90 backdrop-blur-md" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}>
         <button
           type="button"
           onClick={() => setView("dashboard")}
