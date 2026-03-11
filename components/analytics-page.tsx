@@ -662,8 +662,8 @@ export function AnalyticsPage() {
                               ? <TrendingUp className="w-3 h-3" />
                               : <TrendingDown className="w-3 h-3" />}
                           {Math.abs(projectionData.trendPct) < 5
-                            ? "Similar al promedio"
-                            : `${projectionData.trendPct > 0 ? "+" : ""}${projectionData.trendPct.toFixed(0)}% vs promedio`}
+                            ? `Similar a últimos ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`
+                            : `${projectionData.trendPct > 0 ? "+" : ""}${projectionData.trendPct.toFixed(0)}% vs últimos ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`}
                         </div>
                       )}
                     </div>
