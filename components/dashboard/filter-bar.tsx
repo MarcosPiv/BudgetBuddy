@@ -44,9 +44,7 @@ export function FilterBar({
       animate={{ opacity: 1 }}
       transition={{ delay: 0.05 }}
     >
-      <div className="relative">
-        <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 lg:hidden" />
-        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pr-8 lg:mx-0 lg:px-0 lg:pr-0 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(["week", "month", "year"] as TimeFilter[]).map((f) => (
             <button
               key={f}
@@ -75,7 +73,6 @@ export function FilterBar({
           >
             {timeFilter === "custom" ? filterLabels.custom : "Personalizado"}
           </button>
-        </div>
       </div>
 
       <AnimatePresence>
