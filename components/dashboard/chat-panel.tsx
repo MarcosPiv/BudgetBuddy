@@ -1,9 +1,9 @@
 "use client"
 
+import { useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Bot, User, Send, Mic, MicOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import type { ChatMessage } from "./shared"
 
 interface ChatPanelProps {
@@ -33,6 +33,15 @@ export function ChatPanel({
   startChatRecording,
   stopChatRecording,
 }: ChatPanelProps) {
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const ta = chatTextareaRef.current
+    if (!ta) return
+    ta.style.height = "auto"
+    ta.style.height = `${Math.min(ta.scrollHeight, 144)}px`
+  }, [chatInput])
+
   return (
     <AnimatePresence>
       {chatOpen && (
@@ -127,14 +136,22 @@ export function ChatPanel({
           <div className="px-4 py-3 border-t border-border shrink-0">
             <form
               onSubmit={handleChatSubmit}
-              className="flex items-center gap-2 bg-secondary/50 rounded-xl px-3 py-1.5 border border-border/60 focus-within:border-accent/50 transition-colors"
+              className="flex items-end gap-2 bg-secondary/50 rounded-xl px-3 py-2 border border-border/60 focus-within:border-accent/50 transition-colors"
             >
-              <Input
+              <textarea
+                ref={chatTextareaRef}
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    e.currentTarget.form?.requestSubmit()
+                  }
+                }}
                 placeholder={isChatRecording ? "Grabando audio..." : "Pregunta sobre tus finanzas..."}
                 disabled={isChatProcessing || isChatRecording}
-                className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0 text-sm"
+                rows={1}
+                className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0.5"
               />
               <Button
                 type="button"

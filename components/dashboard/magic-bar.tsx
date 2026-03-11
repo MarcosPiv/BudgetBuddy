@@ -1,5 +1,6 @@
 "use client"
 
+import { useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
@@ -89,6 +90,15 @@ export function MagicBar({
   stopRecording,
   aiError,
 }: MagicBarProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = "auto"
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
+  }, [magicInput])
+
   return (
     <div
       className={`fixed bottom-0 left-0 z-40 bg-background/95 backdrop-blur-md border-t border-border transition-[right] duration-300 ease-out ${
@@ -240,13 +250,21 @@ export function MagicBar({
             <form onSubmit={handleMagicSubmit}>
 
               {/* Text row */}
-              <div className="flex items-center gap-2 mb-2.5">
-                <Sparkles className="w-4 h-4 text-accent shrink-0" />
-                <Input
+              <div className="flex items-end gap-2 mb-2.5">
+                <Sparkles className="w-4 h-4 text-accent shrink-0 mb-0.5" />
+                <textarea
+                  ref={textareaRef}
                   value={magicInput}
                   onChange={(e) => setMagicInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      e.currentTarget.form?.requestSubmit()
+                    }
+                  }}
                   placeholder="Pague 12000 en el super..."
-                  className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0 text-sm"
+                  rows={1}
+                  className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-hidden leading-5 py-0"
                   disabled={isProcessing}
                 />
 
