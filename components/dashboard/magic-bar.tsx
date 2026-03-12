@@ -97,6 +97,7 @@ export function MagicBar({
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [isClickMode, setIsClickMode] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
+  const [dragY, setDragY] = useState(0)
   const touchStartY = useRef<number | null>(null)
 
   useEffect(() => {
@@ -319,132 +320,200 @@ export function MagicBar({
                   <Paperclip className="w-4 h-4" />
                 </button>
 
-                {/* Audio — hold to record */}
+                {/* Action Buttons (Record or Send) */}
                 <div className="relative flex items-center shrink-0">
-                  <AnimatePresence>
-                    {isRecording && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="absolute bottom-full mb-3 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                        {isClickMode
-                          ? "Grabando... (Pulsa para detener)"
-                          : isLocked
-                            ? "Grabando... (Pulsa para detener)"
-                            : "Grabando... (Desliza ↑ para bloquear)"}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {/* MOBILE VIEW: Single shared container for instant swap without layout shift */}
+                  <div className="flex md:hidden relative w-9 h-9 items-center justify-center">
+                    {magicInput.trim().length === 0 ? (
+                      /* Audio — hold to record (Visible only when empty on mobile) */
+                      <>
+                        <AnimatePresence>
+                          {isRecording && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              className="absolute bottom-full mb-3 right-0 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                              {isClickMode
+                                ? "Grabando... (Pulsa para detener)"
+                                : isLocked
+                                  ? "Grabando... (Pulsa para detener)"
+                                  : "Grabando... (Desliza ↑ para bloquear)"}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
 
-                  {/* Lock Indicator Animation when not locked yet on touch */}
-                  <AnimatePresence>
-                    {isRecording && !isClickMode && !isLocked && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 0 }}
-                        animate={{ opacity: 1, y: -45 }}
-                        exit={{ opacity: 0, scale: 0 }}
-                        className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none text-muted-foreground"
-                      >
-                        <Lock className="w-4 h-4 text-destructive/70 mb-1" />
-                        <span className="text-[9px] font-bold tracking-widest text-destructive/70 opacity-50">↑</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        {/* Lock Indicator Animation when not locked yet on touch */}
+                        <AnimatePresence>
+                          {isRecording && !isClickMode && !isLocked && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 0 }}
+                              animate={{ opacity: 1, y: -45 - (dragY * 0.5) }}
+                              exit={{ opacity: 0, scale: 0 }}
+                              className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none text-muted-foreground"
+                            >
+                              <Lock className="w-4 h-4 text-destructive/70 mb-1" />
+                              <span className="text-[9px] font-bold tracking-widest text-destructive/70 opacity-50">↑</span>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
 
-                  <button
-                    type="button"
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      if (e.pointerType === "mouse") {
+                        <Button
+                          type="button"
+                          size="icon"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            if (e.pointerType === "mouse") {
+                              setIsClickMode(true);
+                              if (isRecording) {
+                                stopRecording();
+                                setIsLocked(false);
+                              } else {
+                                startRecording();
+                              }
+                            } else {
+                              // Touch behavior
+                              setIsClickMode(false);
+                              if (isLocked) {
+                                stopRecording();
+                                setIsLocked(false);
+                              } else {
+                                startRecording();
+                                setIsLocked(false);
+                                setDragY(0);
+                                touchStartY.current = e.clientY;
+                                e.currentTarget.setPointerCapture(e.pointerId);
+                              }
+                            }
+                          }}
+                          onPointerMove={(e) => {
+                            if (e.pointerType === "mouse") return;
+                            if (!isRecording || isLocked || touchStartY.current === null) return;
+
+                            const deltaY = touchStartY.current - e.clientY;
+                            const currentDrag = Math.max(0, deltaY);
+                            setDragY(currentDrag);
+
+                            if (deltaY > 100) { // Slide up threshold 100px
+                              setIsLocked(true);
+                              setDragY(0);
+                              touchStartY.current = null;
+                            }
+                          }}
+                          onPointerUp={(e) => {
+                            if (e.pointerType !== "mouse") {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                              if (!isLocked) {
+                                stopRecording();
+                              }
+                              setDragY(0);
+                              touchStartY.current = null;
+                            }
+                          }}
+                          onPointerLeave={(e) => {
+                            if (e.pointerType !== "mouse" && isRecording && !isLocked) {
+                              stopRecording();
+                            }
+                            setDragY(0);
+                          }}
+                          onPointerCancel={(e) => {
+                            if (e.pointerType !== "mouse") {
+                              if (!isLocked) stopRecording();
+                              setDragY(0);
+                              touchStartY.current = null;
+                            }
+                          }}
+                          disabled={isProcessing}
+                          style={{
+                            transform: dragY > 0 && !isLocked ? `translateY(-${dragY}px)` : 'none'
+                          }}
+                          className={`absolute inset-0 w-full h-full transition-colors select-none touch-none cursor-pointer z-10 ${isRecording
+                            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                            : "bg-primary text-primary-foreground hover:bg-primary/90"
+                            }`}
+                          aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+                        >
+                          {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                        </Button>
+                      </>
+                    ) : (
+                      /* Send Button (Visible only when text is entered on mobile) */
+                      <Button
+                        type="submit"
+                        size="icon"
+                        className="absolute inset-0 w-full h-full bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer transition-all"
+                        disabled={isProcessing}
+                        aria-label="Enviar"
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* DESKTOP VIEW: Both buttons always visible */}
+
+                  {/* Desktop Only Audio Recording Button */}
+                  <div className="hidden md:flex relative items-center shrink-0 mr-1.5">
+                    <AnimatePresence>
+                      {isRecording && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className="absolute bottom-full mb-3 right-0 lg:right-auto lg:left-1/2 lg:-translate-x-1/2 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                          {isClickMode ? "Grabando... (Pulsa para detener)" : "Grabando..."}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <Button
+                      type="button"
+                      size="icon"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
                         setIsClickMode(true);
                         if (isRecording) {
                           stopRecording();
-                          setIsLocked(false);
                         } else {
                           startRecording();
                         }
-                      } else {
-                        // Touch behavior
-                        setIsClickMode(false);
-                        if (isLocked) {
-                          stopRecording();
-                          setIsLocked(false);
-                        } else {
-                          startRecording();
-                          setIsLocked(false);
-                          touchStartY.current = e.clientY;
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                        }
-                      }
-                    }}
-                    onPointerMove={(e) => {
-                      if (e.pointerType === "mouse") return;
-                      if (!isRecording || isLocked || touchStartY.current === null) return;
+                      }}
+                      disabled={isProcessing}
+                      className={`transition-all select-none touch-none cursor-pointer z-10 ${isRecording
+                        ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90"
+                        }`}
+                      aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+                    >
+                      {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                    </Button>
+                  </div>
 
-                      const deltaY = touchStartY.current - e.clientY;
-                      if (deltaY > 40) { // Slide up threshold 40px
-                        setIsLocked(true);
-                        touchStartY.current = null;
-                      }
-                    }}
-                    onPointerUp={(e) => {
-                      if (e.pointerType !== "mouse") {
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                        if (!isLocked) {
-                          stopRecording();
-                        }
-                        touchStartY.current = null;
-                      }
-                    }}
-                    onPointerLeave={(e) => {
-                      if (e.pointerType !== "mouse" && isRecording && !isLocked) {
-                        stopRecording();
-                      }
-                    }}
-                    onPointerCancel={(e) => {
-                      if (e.pointerType !== "mouse") {
-                        if (!isLocked) stopRecording();
-                        touchStartY.current = null;
-                      }
-                    }}
+                  {/* Desktop Only Send Button */}
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className="hidden md:flex bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 cursor-pointer"
                     disabled={isProcessing}
-                    className={`p-1.5 rounded-lg transition-all select-none touch-none cursor-pointer disabled:opacity-50 relative z-10 ${isRecording
-                      ? "bg-destructive text-destructive-foreground scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                      }`}
-                    aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+                    aria-label="Enviar"
                   >
-                    {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
-                  </button>
+                    {isProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </Button>
                 </div>
-
-                {/* Send */}
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 rounded-lg h-9 w-9 cursor-pointer"
-                  disabled={isProcessing}
-                  aria-label="Enviar"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
               </div>
 
-              {/* Character counter */}
-              {magicInput.length > 0 && (
-                <div className="flex justify-end mb-1 -mt-1">
-                  <span className={`text-[10px] tabular-nums ${magicInput.length >= 270 ? "text-destructive" : "text-muted-foreground/50"}`}>
-                    {magicInput.length}/300
-                  </span>
-                </div>
-              )}
+
 
               {/* Extras: Fecha + Nota chips */}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
@@ -513,6 +582,15 @@ export function MagicBar({
                   <StickyNote className="w-3 h-3 shrink-0" />
                   <span>Nota</span>
                 </button>
+
+                {/* Character counter moved here */}
+                {magicInput.length > 0 && (
+                  <div className="ml-auto flex items-center pr-1">
+                    <span className={`text-[10px] tabular-nums font-medium ${magicInput.length >= 270 ? "text-destructive" : "text-muted-foreground/60"}`}>
+                      {magicInput.length}/300
+                    </span>
+                  </div>
+                )}
               </div>
 
             </form>
