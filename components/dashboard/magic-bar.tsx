@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
   Mic, MicOff, Loader2, DollarSign, Trash2, Settings,
-  CalendarIcon, PenLine, Paperclip,
+  CalendarIcon, PenLine, Paperclip, Lock
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -95,6 +95,9 @@ export function MagicBar({
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [isClickMode, setIsClickMode] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const touchStartY = useRef<number | null>(null)
 
   useEffect(() => {
     const ta = textareaRef.current
@@ -105,9 +108,8 @@ export function MagicBar({
 
   return (
     <div
-      className={`fixed bottom-0 left-0 z-40 bg-background/95 backdrop-blur-md border-t border-border transition-[right] duration-300 ease-out ${
-        chatOpen ? "right-0 lg:right-80 xl:right-96" : "right-0"
-      }`}
+      className={`fixed bottom-0 left-0 z-40 bg-background/95 backdrop-blur-md border-t border-border transition-[right] duration-300 ease-out ${chatOpen ? "right-0 lg:right-80 xl:right-96" : "right-0"
+        }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="max-w-3xl mx-auto px-4 pt-3 pb-3">
@@ -177,11 +179,10 @@ export function MagicBar({
                           key={opt.key}
                           type="button"
                           onClick={() => setNewExRateType(opt.key)}
-                          className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
-                            isSelected
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-border/80"
-                          }`}
+                          className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${isSelected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-border/80"
+                            }`}
                         >
                           <span className="leading-none">{opt.emoji}</span>
                           <span>{opt.label}</span>
@@ -254,11 +255,11 @@ export function MagicBar({
             <AnimatePresence>
               {showAttachMenu && (
                 <motion.div
-                  className="flex gap-2 mb-3 pb-2.5 border-b border-border/40"
+                  className="flex gap-2 mb-3 pb-2.5 border-b border-border/40 overflow-hidden"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
                 >
                   <button
                     type="button"
@@ -303,51 +304,122 @@ export function MagicBar({
                   disabled={isProcessing}
                 />
 
-                {/* Currency toggle */}
-                <button
-                  type="button"
-                  className={`shrink-0 px-2 py-1 rounded-md text-xs font-mono font-semibold transition-colors cursor-pointer ${
-                    newCurrency === "USD"
-                      ? "bg-chart-5/20 text-chart-5"
-                      : "bg-secondary text-muted-foreground"
-                  }`}
-                  onClick={() => setNewCurrency((p) => (p === "ARS" ? "USD" : "ARS"))}
-                  title="Cambiar moneda"
-                >
-                  {newCurrency}
-                </button>
+                {/* Currency toggle has been moved below */}
 
                 {/* Attach */}
                 <button
                   type="button"
                   onClick={() => setShowAttachMenu((v) => !v)}
-                  className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    showAttachMenu
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  }`}
+                  className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer ${showAttachMenu
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    }`}
                   aria-label="Adjuntar archivo"
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
 
                 {/* Audio — hold to record */}
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); startRecording() }}
-                  onPointerUp={stopRecording}
-                  onPointerLeave={() => { if (isRecording) stopRecording() }}
-                  onPointerCancel={stopRecording}
-                  disabled={isProcessing}
-                  className={`shrink-0 p-1.5 rounded-lg transition-colors select-none touch-none cursor-pointer disabled:opacity-50 ${
-                    isRecording
-                      ? "bg-destructive/15 text-destructive animate-pulse"
+                <div className="relative flex items-center shrink-0">
+                  <AnimatePresence>
+                    {isRecording && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="absolute bottom-full mb-3 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                        {isClickMode
+                          ? "Grabando... (Pulsa para detener)"
+                          : isLocked
+                            ? "Grabando... (Pulsa para detener)"
+                            : "Grabando... (Desliza ↑ para bloquear)"}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Lock Indicator Animation when not locked yet on touch */}
+                  <AnimatePresence>
+                    {isRecording && !isClickMode && !isLocked && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 0 }}
+                        animate={{ opacity: 1, y: -45 }}
+                        exit={{ opacity: 0, scale: 0 }}
+                        className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none text-muted-foreground"
+                      >
+                        <Lock className="w-4 h-4 text-destructive/70 mb-1" />
+                        <span className="text-[9px] font-bold tracking-widest text-destructive/70 opacity-50">↑</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      if (e.pointerType === "mouse") {
+                        setIsClickMode(true);
+                        if (isRecording) {
+                          stopRecording();
+                          setIsLocked(false);
+                        } else {
+                          startRecording();
+                        }
+                      } else {
+                        // Touch behavior
+                        setIsClickMode(false);
+                        if (isLocked) {
+                          stopRecording();
+                          setIsLocked(false);
+                        } else {
+                          startRecording();
+                          setIsLocked(false);
+                          touchStartY.current = e.clientY;
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                        }
+                      }
+                    }}
+                    onPointerMove={(e) => {
+                      if (e.pointerType === "mouse") return;
+                      if (!isRecording || isLocked || touchStartY.current === null) return;
+
+                      const deltaY = touchStartY.current - e.clientY;
+                      if (deltaY > 40) { // Slide up threshold 40px
+                        setIsLocked(true);
+                        touchStartY.current = null;
+                      }
+                    }}
+                    onPointerUp={(e) => {
+                      if (e.pointerType !== "mouse") {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                        if (!isLocked) {
+                          stopRecording();
+                        }
+                        touchStartY.current = null;
+                      }
+                    }}
+                    onPointerLeave={(e) => {
+                      if (e.pointerType !== "mouse" && isRecording && !isLocked) {
+                        stopRecording();
+                      }
+                    }}
+                    onPointerCancel={(e) => {
+                      if (e.pointerType !== "mouse") {
+                        if (!isLocked) stopRecording();
+                        touchStartY.current = null;
+                      }
+                    }}
+                    disabled={isProcessing}
+                    className={`p-1.5 rounded-lg transition-all select-none touch-none cursor-pointer disabled:opacity-50 relative z-10 ${isRecording
+                      ? "bg-destructive text-destructive-foreground scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  }`}
-                  aria-label={isRecording ? "Soltar para detener" : "Mantener para grabar"}
-                >
-                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
+                      }`}
+                    aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+                  >
+                    {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                </div>
 
                 {/* Send */}
                 <Button
@@ -375,16 +447,27 @@ export function MagicBar({
               )}
 
               {/* Extras: Fecha + Nota chips */}
-              <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
+                {/* Currency toggle */}
+                <button
+                  type="button"
+                  className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium font-mono border transition-colors cursor-pointer ${newCurrency === "USD"
+                    ? "border-chart-5/40 bg-chart-5/10 text-chart-5"
+                    : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+                    }`}
+                  onClick={() => setNewCurrency((p) => (p === "ARS" ? "USD" : "ARS"))}
+                  title="Cambiar moneda"
+                >
+                  {newCurrency}
+                </button>
                 <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                        newTxDate
-                          ? "border-accent/40 bg-accent/10 text-accent"
-                          : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
-                      }`}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${newTxDate
+                        ? "border-accent/40 bg-accent/10 text-accent"
+                        : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+                        }`}
                       aria-label="Seleccionar fecha"
                     >
                       <CalendarIcon className="w-3 h-3 shrink-0" />
@@ -421,11 +504,10 @@ export function MagicBar({
                 <button
                   type="button"
                   onClick={() => setShowObservation(!showObservation)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                    showObservation
-                      ? "border-accent/40 bg-accent/10 text-accent"
-                      : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
-                  }`}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${showObservation
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+                    }`}
                   aria-label="Agregar nota"
                 >
                   <StickyNote className="w-3 h-3 shrink-0" />

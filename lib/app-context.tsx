@@ -166,52 +166,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Android back button / back-gesture support ─────────────────────────────
-  // NOTE: iOS PWA standalone mode does NOT fire popstate on edge-swipe (platform limit).
+  // NOTE: iOS PWA standalone mode does NOT fire popstate on edge-swipe (Apple limit).
+  // Strategy: push to history on every setView; on popstate restore the correct view.
+  // When the user reaches the "landing" entry (bottom of the auth stack), we show an
+  // exit hint. The NEXT back press has no more history → Android closes the PWA.
+  // This gives the "double-back to exit" pattern with zero bounce complexity.
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    // Seed the initial entry, then push one extra so there is always
-    // something to pop before the PWA itself exits.
-    history.replaceState({ view: "base" }, "")
-    history.pushState({ view: currentViewRef.current }, "")
-
-    const backPress = { count: 0, timer: null as ReturnType<typeof setTimeout> | null }
-    // Flag to swallow the popstate that history.go(1) fires after a bounce
-    const isBouncing = { current: false }
+    // Replace the browser's initial entry with our current view state
+    history.replaceState({ view: currentViewRef.current }, "")
 
     const handlePopState = (e: PopStateEvent) => {
-      // Ignore the forward-navigation popstate we fire ourselves to bounce back
-      if (isBouncing.current) {
-        isBouncing.current = false
-        return
-      }
-
       const target = (e.state as { view?: View } | null)?.view
 
-      // Logged-in user going back past the authenticated stack (landing, base, or null)
+      // Authenticated user going back past the app's history (landing / null)
       if (userRef.current && (!target || !AUTHENTICATED_VIEWS.includes(target))) {
-        backPress.count++
-        if (backPress.timer) clearTimeout(backPress.timer)
-
-        if (backPress.count >= 2) {
-          // Second press → allow the PWA to close naturally on Android
-          backPress.count = 0
-          return
-        }
-
-        // First press: undo the back with go(1) and show hint
-        isBouncing.current = true
-        history.go(1)
+        // Show exit hint. React state is unchanged (user still sees their current view).
+        // The browser is now at the bottom of our history stack — one more back
+        // will have no entry left and Android will close the PWA naturally.
         window.dispatchEvent(new CustomEvent("bb_exit_hint"))
-        backPress.timer = setTimeout(() => { backPress.count = 0 }, 2500)
         return
       }
 
-      // Not logged in trying to reach authenticated view → block
-      if (!userRef.current && target && AUTHENTICATED_VIEWS.includes(target)) return
-
       if (!target) return
+      // Unauthenticated user somehow reaching an authenticated entry → block
+      if (!userRef.current && AUTHENTICATED_VIEWS.includes(target)) return
 
+      // Normal back navigation within the app
       currentViewRef.current = target
       setNavDirection("back")
       setCurrentView(target)
