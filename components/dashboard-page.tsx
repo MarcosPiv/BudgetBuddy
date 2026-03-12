@@ -75,6 +75,7 @@ export function DashboardPage() {
   const [isRecording, setIsRecording] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const audioHoldRef = useRef(false) // tracks if pointer is still held during getUserMedia
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -451,8 +452,14 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 
   const startRecording = async () => {
+    audioHoldRef.current = true
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // User released before permission resolved — abort cleanly
+      if (!audioHoldRef.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
       const mediaRecorder = new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
@@ -471,12 +478,14 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       mediaRecorder.start()
       setIsRecording(true)
     } catch {
+      audioHoldRef.current = false
       setAiError("No se pudo acceder al micrófono. Habilitá el permiso en tu navegador.")
       setTimeout(() => setAiError(null), 5000)
     }
   }
 
   const stopRecording = () => {
+    audioHoldRef.current = false
     mediaRecorderRef.current?.stop()
     setIsRecording(false)
   }

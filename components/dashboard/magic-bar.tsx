@@ -1,10 +1,11 @@
 "use client"
 
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
-  Mic, MicOff, Loader2, DollarSign, Trash2, Settings, CalendarIcon, PenLine,
+  Mic, MicOff, Loader2, DollarSign, Trash2, Settings,
+  CalendarIcon, PenLine, Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -93,6 +94,7 @@ export function MagicBar({
   onManualEntry,
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
 
   useEffect(() => {
     const ta = textareaRef.current
@@ -248,11 +250,41 @@ export function MagicBar({
               )}
             </AnimatePresence>
 
-            {/* Main input row */}
+            {/* Attach expand menu */}
+            <AnimatePresence>
+              {showAttachMenu && (
+                <motion.div
+                  className="flex gap-2 mb-3 pb-2.5 border-b border-border/40"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { galleryInputRef.current?.click(); setShowAttachMenu(false) }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    <ImagePlus className="w-4 h-4 text-primary" />
+                    <span>Galería</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { startCamera(); setShowAttachMenu(false) }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4 text-primary" />
+                    <span>Ticket</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Main form */}
             <form onSubmit={handleMagicSubmit}>
 
-              {/* Text row */}
-              <div className="flex items-center gap-2 mb-2.5">
+              {/* Input row */}
+              <div className="flex items-center gap-1.5 mb-2">
                 <Sparkles className="w-4 h-4 text-accent shrink-0" />
                 <textarea
                   ref={textareaRef}
@@ -285,6 +317,38 @@ export function MagicBar({
                   {newCurrency}
                 </button>
 
+                {/* Attach */}
+                <button
+                  type="button"
+                  onClick={() => setShowAttachMenu((v) => !v)}
+                  className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    showAttachMenu
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  }`}
+                  aria-label="Adjuntar archivo"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+
+                {/* Audio — hold to record */}
+                <button
+                  type="button"
+                  onPointerDown={(e) => { e.preventDefault(); startRecording() }}
+                  onPointerUp={stopRecording}
+                  onPointerLeave={() => { if (isRecording) stopRecording() }}
+                  onPointerCancel={stopRecording}
+                  disabled={isProcessing}
+                  className={`shrink-0 p-1.5 rounded-lg transition-colors select-none touch-none cursor-pointer disabled:opacity-50 ${
+                    isRecording
+                      ? "bg-destructive/15 text-destructive animate-pulse"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  }`}
+                  aria-label={isRecording ? "Soltar para detener" : "Mantener para grabar"}
+                >
+                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+
                 {/* Send */}
                 <Button
                   type="submit"
@@ -310,33 +374,20 @@ export function MagicBar({
                 </div>
               )}
 
-              {/* Multimodal toolbar */}
-              <div className="grid grid-cols-3 gap-1 pt-2 border-t border-border/40">
-
-                {/* Manual entry */}
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                  onClick={onManualEntry}
-                  aria-label="Formulario manual"
-                >
-                  <PenLine className="w-3.5 h-3.5 shrink-0" />
-                  <span>Manual</span>
-                </button>
-
-                {/* Date picker */}
+              {/* Extras: Fecha + Nota chips */}
+              <div className="flex items-center gap-2 pt-2 border-t border-border/40">
                 <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
                         newTxDate
-                          ? "bg-accent/15 text-accent"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                          ? "border-accent/40 bg-accent/10 text-accent"
+                          : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
                       }`}
                       aria-label="Seleccionar fecha"
                     >
-                      <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
+                      <CalendarIcon className="w-3 h-3 shrink-0" />
                       <span>
                         {newTxDate
                           ? newTxDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
@@ -367,68 +418,35 @@ export function MagicBar({
                   </PopoverContent>
                 </Popover>
 
-                {/* Note */}
                 <button
                   type="button"
-                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    showObservation
-                      ? "bg-accent/15 text-accent"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  }`}
                   onClick={() => setShowObservation(!showObservation)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                    showObservation
+                      ? "border-accent/40 bg-accent/10 text-accent"
+                      : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+                  }`}
                   aria-label="Agregar nota"
                 >
-                  <StickyNote className="w-3.5 h-3.5 shrink-0" />
+                  <StickyNote className="w-3 h-3 shrink-0" />
                   <span>Nota</span>
                 </button>
-
-                {/* Gallery */}
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={() => galleryInputRef.current?.click()}
-                  disabled={isProcessing}
-                  aria-label="Subir desde galeria"
-                >
-                  <ImagePlus className="w-3.5 h-3.5 shrink-0" />
-                  <span>Galería</span>
-                </button>
-
-                {/* Camera */}
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={startCamera}
-                  disabled={isProcessing}
-                  aria-label="Escanear ticket"
-                >
-                  <Camera className="w-3.5 h-3.5 shrink-0" />
-                  <span>Ticket</span>
-                </button>
-
-                {/* Audio */}
-                <button
-                  type="button"
-                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isRecording
-                      ? "bg-destructive/15 text-destructive animate-pulse"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  }`}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing}
-                  aria-label={isRecording ? "Detener grabacion" : "Grabar audio"}
-                >
-                  {isRecording ? (
-                    <MicOff className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <Mic className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <span>{isRecording ? "Detener" : "Audio"}</span>
-                </button>
-
               </div>
+
             </form>
           </div>
+        </div>
+
+        {/* Ir a carga manual */}
+        <div className="flex justify-center mt-1.5">
+          <button
+            type="button"
+            onClick={onManualEntry}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer py-1"
+          >
+            <PenLine className="w-3 h-3" />
+            <span>Ir a carga manual</span>
+          </button>
         </div>
 
         {/* AI error */}
