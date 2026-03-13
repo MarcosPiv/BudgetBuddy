@@ -53,7 +53,7 @@ interface MagicBarProps {
   startCamera: () => void
   isRecording: boolean
   startRecording: () => void
-  stopRecording: () => void
+  stopRecording: (opts?: { cancel?: boolean; autoSubmit?: boolean }) => void
   aiError: string | null
   onManualEntry: () => void
 }
@@ -98,7 +98,28 @@ export function MagicBar({
   const [isClickMode, setIsClickMode] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [dragY, setDragY] = useState(0)
+  const [dragX, setDragX] = useState(0)
   const touchStartY = useRef<number | null>(null)
+  const touchStartX = useRef<number | null>(null)
+  const [recordingTime, setRecordingTime] = useState(0)
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime((prev) => prev + 1)
+      }, 1000)
+    } else {
+      setRecordingTime(0)
+    }
+    return () => clearInterval(interval)
+  }, [isRecording])
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+  }
 
   useEffect(() => {
     const ta = textareaRef.current
@@ -307,18 +328,58 @@ export function MagicBar({
 
                 {/* Currency toggle has been moved below */}
 
-                {/* Attach */}
-                <button
-                  type="button"
-                  onClick={() => setShowAttachMenu((v) => !v)}
-                  className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer ${showAttachMenu
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                    }`}
-                  aria-label="Adjuntar archivo"
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
+                {/* Attach / Cancel Slide text / Lock Trash */}
+                <div className="flex items-center shrink-0 min-w-8">
+                  <AnimatePresence mode="popLayout">
+                    {isRecording && !isClickMode && !isLocked ? (
+                      <motion.div
+                        key="cancel-text"
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{
+                          opacity: dragX > 0 ? Math.max(0, 1 - (dragX / 80)) : 1,
+                          x: dragX > 0 ? -Math.min(dragX, 100) : 0
+                        }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="text-[11px] font-medium text-muted-foreground whitespace-nowrap overflow-hidden pointer-events-none pr-1 tracking-wider uppercase"
+                      >
+                        ◄ Desliza para cancelar
+                      </motion.div>
+                    ) : isLocked ? (
+                      <motion.button
+                        key="trash-btn"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        type="button"
+                        onClick={() => {
+                          stopRecording({ cancel: true });
+                          setIsLocked(false);
+                          setIsClickMode(false);
+                        }}
+                        className="shrink-0 p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                        aria-label="Eliminar grabación"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        key="attach-btn"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        type="button"
+                        onClick={() => setShowAttachMenu((v) => !v)}
+                        className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer ${showAttachMenu
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                          }`}
+                        aria-label="Adjuntar archivo"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                 {/* Action Buttons (Record or Send) */}
                 <div className="relative flex items-center shrink-0">
@@ -336,11 +397,12 @@ export function MagicBar({
                               className="absolute bottom-full mb-3 right-0 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
                             >
                               <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                              <span className="font-mono">{formatTime(recordingTime)}</span>
                               {isClickMode
-                                ? "Grabando... (Pulsa para detener)"
+                                ? " (Pulsa para detener)"
                                 : isLocked
-                                  ? "Grabando... (Pulsa para detener)"
-                                  : "Grabando... (Desliza ↑ para bloquear)"}
+                                  ? " (Pulsa para detener)"
+                                  : " (Desliza ↑)"}
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -368,7 +430,7 @@ export function MagicBar({
                             if (e.pointerType === "mouse") {
                               setIsClickMode(true);
                               if (isRecording) {
-                                stopRecording();
+                                stopRecording({ autoSubmit: true });
                                 setIsLocked(false);
                               } else {
                                 startRecording();
@@ -377,65 +439,86 @@ export function MagicBar({
                               // Touch behavior
                               setIsClickMode(false);
                               if (isLocked) {
-                                stopRecording();
+                                stopRecording({ autoSubmit: true });
                                 setIsLocked(false);
                               } else {
                                 startRecording();
                                 setIsLocked(false);
                                 setDragY(0);
+                                setDragX(0);
                                 touchStartY.current = e.clientY;
+                                touchStartX.current = e.clientX;
                                 e.currentTarget.setPointerCapture(e.pointerId);
                               }
                             }
                           }}
                           onPointerMove={(e) => {
                             if (e.pointerType === "mouse") return;
-                            if (!isRecording || isLocked || touchStartY.current === null) return;
+                            if (!isRecording || isLocked || touchStartY.current === null || touchStartX.current === null) return;
 
                             const deltaY = touchStartY.current - e.clientY;
                             const currentDrag = Math.max(0, deltaY);
                             setDragY(currentDrag);
 
+                            const deltaX = touchStartX.current - e.clientX;
+                            const currentDragX = Math.max(0, deltaX);
+                            setDragX(currentDragX);
+
                             if (deltaY > 100) { // Slide up threshold 100px
                               setIsLocked(true);
                               setDragY(0);
+                              setDragX(0);
                               touchStartY.current = null;
+                              touchStartX.current = null;
+                            } else if (deltaX > 100) { // Slide left threshold 100px
+                              stopRecording({ cancel: true });
+                              setIsLocked(false);
+                              setDragY(0);
+                              setDragX(0);
+                              touchStartY.current = null;
+                              touchStartX.current = null;
                             }
                           }}
                           onPointerUp={(e) => {
                             if (e.pointerType !== "mouse") {
                               e.currentTarget.releasePointerCapture(e.pointerId);
                               if (!isLocked) {
-                                stopRecording();
+                                if (dragX <= 100) stopRecording({ autoSubmit: true });
+                                else stopRecording({ cancel: true });
                               }
                               setDragY(0);
+                              setDragX(0);
                               touchStartY.current = null;
+                              touchStartX.current = null;
                             }
                           }}
                           onPointerLeave={(e) => {
                             if (e.pointerType !== "mouse" && isRecording && !isLocked) {
-                              stopRecording();
+                              stopRecording({ cancel: true });
                             }
                             setDragY(0);
+                            setDragX(0);
                           }}
                           onPointerCancel={(e) => {
                             if (e.pointerType !== "mouse") {
-                              if (!isLocked) stopRecording();
+                              if (!isLocked) stopRecording({ cancel: true });
                               setDragY(0);
+                              setDragX(0);
                               touchStartY.current = null;
+                              touchStartX.current = null;
                             }
                           }}
                           disabled={isProcessing}
                           style={{
-                            transform: dragY > 0 && !isLocked ? `translateY(-${dragY}px)` : 'none'
+                            transform: dragY > 0 && !isLocked ? `translateY(-${dragY}px)` : dragX > 0 && !isLocked ? `translateX(-${dragX}px)` : 'none'
                           }}
                           className={`absolute inset-0 w-full h-full transition-colors select-none touch-none cursor-pointer z-10 ${isRecording
-                            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                            ? (isLocked ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md" : "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]")
                             : "bg-primary text-primary-foreground hover:bg-primary/90"
                             }`}
-                          aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+                          aria-label={isRecording ? (isLocked ? "Enviar grabación" : "Detener o cancelar grabación") : "Grabar audio"}
                         >
-                          {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                          {isLocked ? <Send className="w-4 h-4 ml-0.5" /> : isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
                         </Button>
                       </>
                     ) : (
@@ -469,7 +552,8 @@ export function MagicBar({
                           className="absolute bottom-full mb-3 right-0 lg:right-auto lg:left-1/2 lg:-translate-x-1/2 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                          {isClickMode ? "Grabando... (Pulsa para detener)" : "Grabando..."}
+                          <span className="font-mono">{formatTime(recordingTime)}</span>
+                          {isClickMode ? " (Pulsa para detener)" : ""}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -480,7 +564,7 @@ export function MagicBar({
                         e.preventDefault();
                         setIsClickMode(true);
                         if (isRecording) {
-                          stopRecording();
+                          stopRecording({ autoSubmit: true });
                         } else {
                           startRecording();
                         }

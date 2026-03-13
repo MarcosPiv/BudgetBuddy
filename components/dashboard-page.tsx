@@ -76,6 +76,7 @@ export function DashboardPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const audioHoldRef = useRef(false) // tracks if pointer is still held during getUserMedia
+  const audioOptsRef = useRef<{ cancel?: boolean; autoSubmit?: boolean }>({})
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -221,7 +222,7 @@ export function DashboardPage() {
     return transactions
       .filter(tx => { const d = new Date(tx.date); return tx.type === "expense" && d >= from && d <= to })
       .reduce((a, tx) => a + toArs(tx), 0)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, timeFilter, usdRate])
 
   const expensesChangePct = (prevPeriodExpenses !== null && prevPeriodExpenses > 0)
@@ -268,18 +269,18 @@ export function DashboardPage() {
     emoji: string
     value: number | null | undefined
   }> = [
-    { key: "BLUE",    label: "Blue",    emoji: "💵", value: liveRates.blue?.venta },
-    { key: "TARJETA", label: "Tarjeta", emoji: "💳", value: liveRates.tarjeta?.venta },
-    { key: "OFICIAL", label: "Oficial", emoji: "🏦", value: liveRates.oficial?.venta },
-    { key: "MEP",     label: "MEP",     emoji: "📈", value: liveRates.mep?.venta },
-    { key: "MANUAL",  label: "Manual",  emoji: "✏️",  value: null },
-  ]
+      { key: "BLUE", label: "Blue", emoji: "💵", value: liveRates.blue?.venta },
+      { key: "TARJETA", label: "Tarjeta", emoji: "💳", value: liveRates.tarjeta?.venta },
+      { key: "OFICIAL", label: "Oficial", emoji: "🏦", value: liveRates.oficial?.venta },
+      { key: "MEP", label: "MEP", emoji: "📈", value: liveRates.mep?.venta },
+      { key: "MANUAL", label: "Manual", emoji: "✏️", value: null },
+    ]
 
   const calendarPresets: { label: string; getRange: () => { from: Date; to: Date } }[] = [
-    { label: "Hoy",      getRange: () => { const d = new Date(); return { from: d, to: d } } },
-    { label: "Ayer",     getRange: () => { const d = new Date(); d.setDate(d.getDate() - 1); return { from: d, to: d } } },
-    { label: "7 días",   getRange: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 6); return { from, to } } },
-    { label: "30 días",  getRange: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 29); return { from, to } } },
+    { label: "Hoy", getRange: () => { const d = new Date(); return { from: d, to: d } } },
+    { label: "Ayer", getRange: () => { const d = new Date(); d.setDate(d.getDate() - 1); return { from: d, to: d } } },
+    { label: "7 días", getRange: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 6); return { from, to } } },
+    { label: "30 días", getRange: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 29); return { from, to } } },
     { label: "Este mes", getRange: () => { const n = new Date(); return { from: new Date(n.getFullYear(), n.getMonth(), 1), to: n } } },
     { label: "Mes ant.", getRange: () => { const n = new Date(); return { from: new Date(n.getFullYear(), n.getMonth() - 1, 1), to: new Date(n.getFullYear(), n.getMonth(), 0) } } },
   ]
@@ -344,9 +345,10 @@ export function DashboardPage() {
     setShowManualEntry(false)
   }
 
-  const handleMagicSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if ((!magicInput.trim() && attachments.length === 0) || isProcessing) return
+  const handleMagicSubmit = async (e?: React.FormEvent, directAttachments?: Attachment[]) => {
+    if (e) e.preventDefault();
+    const activeAttachments = directAttachments ?? attachments;
+    if ((!magicInput.trim() && activeAttachments.length === 0) || isProcessing) return
 
     // If offline or no API key, open manual entry form pre-filled with the typed text
     if (!isOnline || !apiKey.trim()) {
@@ -360,7 +362,7 @@ export function DashboardPage() {
     setAiError(null)
 
     const textInput = magicInput.trim()
-    const capturedAttachments = [...attachments]
+    const capturedAttachments = [...(directAttachments ?? attachments)]
     const obs = observation.trim() || undefined
     const curr = newCurrency
     const appliedRate = getAppliedRate()
@@ -413,7 +415,7 @@ export function DashboardPage() {
         addTransaction({
           description: result.description,
           amount: result.amount,
-          type: result.type,
+          type: result.type as "expense" | "income",
           icon: result.icon,
           category: result.category,
           date: txDate,
@@ -437,7 +439,7 @@ export function DashboardPage() {
     }
   }
 
-const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
     const next: Attachment[] = []
@@ -467,13 +469,26 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data)
       }
       mediaRecorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        if (audioOptsRef.current.cancel) {
+          audioOptsRef.current = {}
+          return
+        }
+
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
         const file = new File([blob], `voz-${Date.now()}.webm`, { type: "audio/webm" })
-        setAttachments((prev) => [
-          ...prev,
-          { type: "audio", name: file.name, url: URL.createObjectURL(blob), file },
-        ])
-        stream.getTracks().forEach((t) => t.stop())
+        const newAtt: Attachment = { type: "audio", name: file.name, url: URL.createObjectURL(blob), file }
+
+        setAttachments((prev) => {
+          const next = [...prev, newAtt]
+          if (audioOptsRef.current.autoSubmit) {
+            // Trigger auto-submit asynchronously so state updates have time to bubble if needed, 
+            // though we pass directAttachments to bypass state delays.
+            setTimeout(() => handleMagicSubmit(undefined, next), 0)
+          }
+          return next
+        })
+        audioOptsRef.current = {}
       }
       mediaRecorder.start()
       setIsRecording(true)
@@ -484,8 +499,9 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   }
 
-  const stopRecording = () => {
+  const stopRecording = (opts?: { cancel?: boolean; autoSubmit?: boolean }) => {
     audioHoldRef.current = false
+    audioOptsRef.current = opts || {}
     mediaRecorderRef.current?.stop()
     setIsRecording(false)
   }
@@ -744,104 +760,101 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         {/* ── Sticky header ────────────────────────────────────── */}
         <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-md">
           <div className="flex items-center justify-between px-4 pb-3 sm:px-6" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}>
-          {/* Left: logo + balance (balance visible on sm+) */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">
-              <Wallet className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <div className="hidden sm:flex flex-col leading-none min-w-0">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
-              </span>
-              <div className="flex items-baseline gap-2">
-                <motion.span
-                  className={`text-lg font-bold tabular-nums truncate ${
-                    balance >= 0 ? "text-primary" : "text-destructive"
-                  }`}
-                  key={balance}
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  {balance < 0 ? "-" : ""}
-                  {formatCurrency(balance)}
-                </motion.span>
-                {expensesChangePct !== null && (
-                  <span className={`text-[10px] font-medium tabular-nums shrink-0 ${
-                    expensesChangePct > 5 ? "text-destructive" :
-                    expensesChangePct < -5 ? "text-primary" :
-                    "text-muted-foreground"
-                  }`}>
-                    {expensesChangePct > 0 ? "+" : ""}{expensesChangePct.toFixed(0)}% {periodLabel}
-                  </span>
-                )}
+            {/* Left: logo + balance (balance visible on sm+) */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">
+                <Wallet className="w-4 h-4 text-primary-foreground" />
+              </div>
+              <div className="hidden sm:flex flex-col leading-none min-w-0">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <motion.span
+                    className={`text-lg font-bold tabular-nums truncate ${balance >= 0 ? "text-primary" : "text-destructive"
+                      }`}
+                    key={balance}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {balance < 0 ? "-" : ""}
+                    {formatCurrency(balance)}
+                  </motion.span>
+                  {expensesChangePct !== null && (
+                    <span className={`text-[10px] font-medium tabular-nums shrink-0 ${expensesChangePct > 5 ? "text-destructive" :
+                      expensesChangePct < -5 ? "text-primary" :
+                        "text-muted-foreground"
+                      }`}>
+                      {expensesChangePct > 0 ? "+" : ""}{expensesChangePct.toFixed(0)}% {periodLabel}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Offline / syncing pill */}
-          {(!isOnline || pendingOfflineCount > 0) && (
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
-              !isOnline
+            {/* Offline / syncing pill */}
+            {(!isOnline || pendingOfflineCount > 0) && (
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${!isOnline
                 ? "bg-amber-500/15 text-amber-500"
                 : "bg-primary/10 text-primary"
-            }`}>
-              {!isOnline
-                ? <><WifiOff className="w-3 h-3" />{pendingOfflineCount > 0 ? `${pendingOfflineCount} en cola` : "Sin conexión"}</>
-                : <><RefreshCw className="w-3 h-3 animate-spin" />Sincronizando...</>
-              }
-            </div>
-          )}
+                }`}>
+                {!isOnline
+                  ? <><WifiOff className="w-3 h-3" />{pendingOfflineCount > 0 ? `${pendingOfflineCount} en cola` : "Sin conexión"}</>
+                  : <><RefreshCw className="w-3 h-3 animate-spin" />Sincronizando...</>
+                }
+              </div>
+            )}
 
-          {/* Right: actions */}
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={() => setChatOpen(!chatOpen)}
-              aria-label="Chat"
-            >
-              <MessageCircle className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={() => setView("analytics")}
-              aria-label="Analítica"
-            >
-              <BarChart2 className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={() => setView("settings")}
-              aria-label="Configuracion"
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={signOut}
-              aria-label="Salir"
-            >
-              <LogOut className="w-5 h-5" />
-            </Button>
-            <button
-              className="cursor-pointer ml-1"
-              onClick={() => setView("profile")}
-              aria-label="Perfil"
-            >
-              <Avatar className="w-8 h-8">
-                <AvatarFallback className="bg-secondary text-foreground text-xs font-semibold">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </div>
+            {/* Right: actions */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={() => setChatOpen(!chatOpen)}
+                aria-label="Chat"
+              >
+                <MessageCircle className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={() => setView("analytics")}
+                aria-label="Analítica"
+              >
+                <BarChart2 className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={() => setView("settings")}
+                aria-label="Configuracion"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={signOut}
+                aria-label="Salir"
+              >
+                <LogOut className="w-5 h-5" />
+              </Button>
+              <button
+                className="cursor-pointer ml-1"
+                onClick={() => setView("profile")}
+                aria-label="Perfil"
+              >
+                <Avatar className="w-8 h-8">
+                  <AvatarFallback className="bg-secondary text-foreground text-xs font-semibold">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </div>
           </div>
 
           {/* Mobile-only: prominent centered balance */}
@@ -859,11 +872,10 @@ const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
               {balance < 0 ? "-" : ""}{formatCurrency(balance)}
             </motion.span>
             {expensesChangePct !== null && (
-              <span className={`text-xs font-medium tabular-nums mt-0.5 ${
-                expensesChangePct > 5 ? "text-destructive" :
+              <span className={`text-xs font-medium tabular-nums mt-0.5 ${expensesChangePct > 5 ? "text-destructive" :
                 expensesChangePct < -5 ? "text-primary" :
-                "text-muted-foreground"
-              }`}>
+                  "text-muted-foreground"
+                }`}>
                 {expensesChangePct > 0 ? "+" : ""}{expensesChangePct.toFixed(0)}% gastos {periodLabel}
               </span>
             )}
