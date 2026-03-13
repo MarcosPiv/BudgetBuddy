@@ -58,6 +58,24 @@ interface MagicBarProps {
   onManualEntry: () => void
 }
 
+const AudioWaveform = () => (
+  <div className="flex-1 flex items-center gap-[3px] h-5 overflow-hidden opacity-70 mask-image-linear-gradient w-full">
+    {Array.from({ length: 40 }).map((_, i) => {
+      const duration = 0.5 + Math.random() * 0.7;
+      const initialHeight = 20 + Math.random() * 30;
+      const targetHeight = 50 + Math.random() * 50;
+      return (
+        <motion.div
+          key={i}
+          animate={{ height: [`${initialHeight}%`, `${targetHeight}%`, `${initialHeight}%`] }}
+          transition={{ repeat: Infinity, duration, ease: "easeInOut" }}
+          className="w-[3px] bg-foreground/60 rounded-full shrink-0"
+        />
+      );
+    })}
+  </div>
+)
+
 export function MagicBar({
   chatOpen,
   magicInput,
@@ -307,24 +325,36 @@ export function MagicBar({
             <form onSubmit={handleMagicSubmit}>
 
               {/* Input row */}
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="w-4 h-4 text-accent shrink-0" />
-                <textarea
-                  ref={textareaRef}
-                  value={magicInput}
-                  onChange={(e) => setMagicInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      e.currentTarget.form?.requestSubmit()
-                    }
-                  }}
-                  placeholder="Pague 12000 en el super..."
-                  rows={1}
-                  maxLength={300}
-                  className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-y-auto leading-5 py-0 max-h-[80px]"
-                  disabled={isProcessing}
-                />
+              <div className="flex items-center gap-1.5 mb-2 relative">
+                {isRecording ? (
+                  <div className="flex-1 flex items-center min-w-0 pr-2">
+                    <div className="flex items-center gap-2 mr-3 shrink-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
+                      <span className="font-mono text-sm">{formatTime(recordingTime)}</span>
+                    </div>
+                    <AudioWaveform />
+                  </div>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-accent shrink-0" />
+                    <textarea
+                      ref={textareaRef}
+                      value={magicInput}
+                      onChange={(e) => setMagicInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault()
+                          e.currentTarget.form?.requestSubmit()
+                        }
+                      }}
+                      placeholder="Pague 12000 en el super..."
+                      rows={1}
+                      maxLength={300}
+                      className="flex-1 min-w-0 border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none text-sm resize-none overflow-y-auto leading-5 py-0 max-h-[80px]"
+                      disabled={isProcessing}
+                    />
+                  </>
+                )}
 
                 {/* Currency toggle has been moved below */}
 
@@ -388,25 +418,6 @@ export function MagicBar({
                     {magicInput.trim().length === 0 ? (
                       /* Audio — hold to record (Visible only when empty on mobile) */
                       <>
-                        <AnimatePresence>
-                          {isRecording && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9 }}
-                              className="absolute bottom-full mb-3 right-0 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                              <span className="font-mono">{formatTime(recordingTime)}</span>
-                              {isClickMode
-                                ? " (Pulsa para detener)"
-                                : isLocked
-                                  ? " (Pulsa para detener)"
-                                  : " (Desliza ↑)"}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
                         {/* Lock Indicator Animation when not locked yet on touch */}
                         <AnimatePresence>
                           {isRecording && !isClickMode && !isLocked && (
@@ -543,20 +554,6 @@ export function MagicBar({
 
                   {/* Desktop Only Audio Recording Button */}
                   <div className="hidden md:flex relative items-center shrink-0 mr-1.5">
-                    <AnimatePresence>
-                      {isRecording && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="absolute bottom-full mb-3 right-0 lg:right-auto lg:left-1/2 lg:-translate-x-1/2 whitespace-nowrap bg-destructive/15 backdrop-blur-md border border-destructive/30 text-destructive text-[11px] font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                          <span className="font-mono">{formatTime(recordingTime)}</span>
-                          {isClickMode ? " (Pulsa para detener)" : ""}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                     <Button
                       type="button"
                       size="icon"
