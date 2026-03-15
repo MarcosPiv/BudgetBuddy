@@ -627,6 +627,25 @@ async function callGeminiChat(apiKey: string, context: string, history: ChatTurn
 
 // ── Update detection ─────────────────────────────────────────────────────────
 
+/** Parses the raw JSON string returned by a detect prompt into a normalized match object. */
+function parseAIMatch(raw: string): { description: string; daysAgo?: number; txType?: "income" | "expense" } | null {
+  const clean = raw.trim().replace(/```json|```/g, "").trim()
+  const m = clean.match(/\{[\s\S]*\}/)
+  if (!m) return null
+  try {
+    const p = JSON.parse(m[0])
+    if (!p.match?.description) return null
+    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
+    return {
+      description: String(p.match.description).slice(0, 50),
+      daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
+      txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
 /** Sends a single-turn text prompt to the active provider and returns the raw text response. */
 async function callTextAI(provider: AIProvider, apiKey: string, systemPrompt: string, userContent: string): Promise<string> {
   if (provider === "claude") {
@@ -711,25 +730,20 @@ export async function callAIUpdateDetect(
   try {
     const safeMsg = sanitizeUserInput(message)
     const raw = await callTextAI(provider, apiKey, UPDATE_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
+    const matchBase = parseAIMatch(raw)
+    if (!matchBase) return { match: null, updates: {} }
+    // Normalize alternative Spanish field names the AI might use despite instructions
     const clean = raw.trim().replace(/```json|```/g, "").trim()
     const m = clean.match(/\{[\s\S]*\}/)
-    if (!m) return { match: null, updates: {} }
-    const p = JSON.parse(m[0])
-    if (!p.match?.description) return { match: null, updates: {} }
-    // Normalize alternative Spanish field names the AI might use despite instructions
+    const p = m ? JSON.parse(m[0]) : {}
     const u = p.updates ?? {}
     const rawObs = u.observation ?? u.nota ?? u.observacion ?? u.observación ?? u.comentario ?? u.detalle
     const rawDesc = u.description ?? u.titulo ?? u.título ?? u.nombre
     const rawAmt = u.amount ?? u.monto
     const rawCat = u.category ?? u.categoria ?? u.categoría
     const rawType = u.type ?? u.tipo
-    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
     return {
-      match: {
-        description: String(p.match.description).slice(0, 50),
-        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
-        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
-      },
+      match: matchBase,
       updates: {
         observation: rawObs != null ? String(rawObs).slice(0, 300) : undefined,
         description: rawDesc ? String(rawDesc).slice(0, 35) : undefined,
@@ -768,19 +782,8 @@ export async function callAIDeleteDetect(
   try {
     const safeMsg = sanitizeUserInput(message)
     const raw = await callTextAI(provider, apiKey, DELETE_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
-    const clean = raw.trim().replace(/```json|```/g, "").trim()
-    const m = clean.match(/\{[\s\S]*\}/)
-    if (!m) return { match: null }
-    const p = JSON.parse(m[0])
-    if (!p.match?.description) return { match: null }
-    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
-    return {
-      match: {
-        description: String(p.match.description).slice(0, 50),
-        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
-        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
-      },
-    }
+    const match = parseAIMatch(raw)
+    return { match }
   } catch {
     return { match: null }
   }
@@ -814,20 +817,13 @@ export async function callAIRecurringDetect(
   try {
     const safeMsg = sanitizeUserInput(message)
     const raw = await callTextAI(provider, apiKey, RECURRING_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
+    const match = parseAIMatch(raw)
+    if (!match) return { match: null, recurring: false }
+    // Also need to extract the `recurring` boolean from the JSON
     const clean = raw.trim().replace(/```json|```/g, "").trim()
     const m = clean.match(/\{[\s\S]*\}/)
-    if (!m) return { match: null, recurring: false }
-    const p = JSON.parse(m[0])
-    if (!p.match?.description) return { match: null, recurring: false }
-    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
-    return {
-      match: {
-        description: String(p.match.description).slice(0, 50),
-        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
-        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
-      },
-      recurring: p.recurring === true,
-    }
+    const p = m ? JSON.parse(m[0]) : {}
+    return { match, recurring: p.recurring === true }
   } catch {
     return { match: null, recurring: false }
   }

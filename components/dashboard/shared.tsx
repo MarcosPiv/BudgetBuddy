@@ -63,6 +63,10 @@ export function fileToBase64(file: File): Promise<string> {
   })
 }
 
+export function formatCurrency(n: number): string {
+  return `$ ${Math.abs(n).toLocaleString("es-AR")} ARS`
+}
+
 export function compressImage(file: File, maxPx = 1200, quality = 0.78): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image()
