@@ -571,25 +571,24 @@ export function DashboardPage() {
       }
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
-        if (audioOptsRef.current.cancel) {
-          audioOptsRef.current = {}
-          return
-        }
+        // Read flags synchronously before clearing — React may defer updater calls,
+        // so checking opts inside setAttachments() updater is a race condition.
+        const shouldAutoSubmit = !!audioOptsRef.current.autoSubmit
+        const wasCancelled = !!audioOptsRef.current.cancel
+        audioOptsRef.current = {}
+
+        if (wasCancelled) return
 
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
         const file = new File([blob], `voz-${Date.now()}.webm`, { type: "audio/webm" })
         const newAtt: Attachment = { type: "audio", name: file.name, url: URL.createObjectURL(blob), file }
 
-        setAttachments((prev) => {
-          const next = [...prev, newAtt]
-          if (audioOptsRef.current.autoSubmit) {
-            // Trigger auto-submit asynchronously so state updates have time to bubble if needed, 
-            // though we pass directAttachments to bypass state delays.
-            setTimeout(() => handleMagicSubmit(undefined, next), 0)
-          }
-          return next
-        })
-        audioOptsRef.current = {}
+        if (shouldAutoSubmit) {
+          // Send directly — skip adding to attachments state to avoid the visual flash
+          handleMagicSubmit(undefined, [newAtt])
+        } else {
+          setAttachments((prev) => [...prev, newAtt])
+        }
       }
       mediaRecorder.start()
       setIsRecording(true)
