@@ -32,14 +32,23 @@ const AnalyticsPage = dynamic(
 
 function AppRouter() {
   const { currentView, loadingAuth, user, navDirection } = useApp()
-  const [locked, setLocked] = useState(() => {
-    if (typeof window === "undefined") return false
-    return (
+  // Always start false to match SSR; updated client-side in useEffect to avoid #418 hydration error
+  const [locked, setLocked] = useState(false)
+  const [hadSession, setHadSession] = useState(false)
+
+  useEffect(() => {
+    // Read localStorage/sessionStorage only after mount (client-only, no SSR mismatch)
+    setLocked(
       localStorage.getItem("bb_biometric_enabled") === "true" &&
       !!localStorage.getItem("bb_biometric_credential_id") &&
       sessionStorage.getItem("bb_unlocked") !== "true"
     )
-  })
+    setHadSession(
+      ["dashboard", "settings", "profile", "analytics"].includes(
+        sessionStorage.getItem("bb_view") ?? ""
+      )
+    )
+  }, [])
 
   useEffect(() => {
     if (!loadingAuth && !user) setLocked(false)
@@ -53,12 +62,6 @@ function AppRouter() {
   }, [])
 
   if (loadingAuth) {
-    // If the user had an authenticated session, show the dashboard skeleton
-    // instead of a blank spinner — smoother perceived loading
-    const hadSession = typeof window !== "undefined" &&
-      ["dashboard", "settings", "profile", "analytics"].includes(
-        sessionStorage.getItem("bb_view") ?? ""
-      )
     if (hadSession) return <DashboardSkeleton />
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
