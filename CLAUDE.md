@@ -189,7 +189,7 @@ app/
   reset-password/
     page.tsx                  # Standalone page for password recovery flow
 components/
-  dashboard-page.tsx          # Orchestrator: all shared state + handlers, compone layout (~889 líneas)
+  dashboard-page.tsx          # Orchestrator: all shared state + handlers + chat intent routing (~1150 líneas)
   dashboard/                  # Sub-componentes del dashboard (extraídos del orquestador)
     shared.tsx                # Constantes (iconMap, VALID_CATEGORIES), tipos (ChatMessage, Attachment),
                               # utilidades (formatDate, formatDateShort, fileToBase64, compressImage)
@@ -223,7 +223,8 @@ hooks/
   use-toast.ts
 lib/
   app-context.tsx             # Global React Context, all types, Supabase data loaders
-  ai.ts                       # callAI() + callAIChat() — Claude / OpenAI / Gemini + key validation
+  ai.ts                       # callAI() / callAIChat() / callAIUpdateDetect() /
+                              # callAIDeleteDetect() / callAIRecurringDetect() — Claude / OpenAI / Gemini
   supabase.ts                 # Supabase client (reads from env vars)
   utils.ts
 public/
@@ -312,6 +313,69 @@ The inline calendar (shown when clicking "Personalizado" in the filter bar) has:
 - **Selected range preview**: shows `fromDate → toDate` and number of days
 - **Calendar picker** for arbitrary ranges + "Aplicar rango" button
 - `applyRange(from, to)` helper ensures `to` is always end-of-day (23:59:59.999)
+
+### BudgetBuddy AI Chat
+
+The chat panel (`components/dashboard/chat-panel.tsx`) connects to `handleChatSubmit` in the dashboard orchestrator. Messages render with `whitespace-pre-wrap` so `\n` characters produce real line breaks.
+
+#### Intent routing in `handleChatSubmit`
+
+`handleChatSubmit` routes each message through a priority chain — **first match wins, always returns**:
+
+1. **DELETE intent** — detected via `DELETE_WORDS` array (`.includes()` check on `lowerMsg`). Calls `callAIDeleteDetect` → `findTransactionByMatch` → `deleteTransaction`.
+2. **RECURRING intent** — detected via `RECURRING_WORDS` array. Calls `callAIRecurringDetect` → `findTransactionByMatch` → `updateTransaction({ isRecurring })`.
+3. **MODIFY intent** — detected via `MODIFY_WORDS` array. Calls `callAIUpdateDetect` → `findTransactionByMatch` → `updateTransaction`.
+4. **Rate-type correction** — pattern-matched (no AI call) on `UPDATE_INTENT` regex + `RATE_PATTERNS`. Updates `exchangeRateType`/`txRate` on the last registered transaction tracked in `chatLastRegisteredRef`.
+5. **New transaction** — triggered when message contains a digit. Calls `callAI` → `addTransaction`. On success, saves a ref in `chatLastRegisteredRef` for follow-up rate corrections.
+6. **Conversational fallback** — calls `callAIChat` with `buildFinancialContext()` as system context.
+
+**Important**: steps 1–3 ALWAYS return (never fall through), even when the AI can't parse the intent (shows a hint message instead). This prevents the chat AI from pretending to perform mutations.
+
+#### `findTransactionByMatch`
+
+Helper defined before `DashboardPage` in `dashboard-page.tsx`:
+- Filters by `daysAgo` (date window ±1 day around target date) if provided
+- Filters by `txType` — also resolves generic Spanish words via `TX_TYPE_WORDS` map (e.g. `"ingreso"` → `type === "income"`)
+- Removes type words from description search terms
+- Fuzzy match: every remaining term must appear in `t.description.toLowerCase()`
+- Fallback: if no description terms remain but `typeFilter` is set, returns most recent transaction by type
+
+#### `TX_TYPE_WORDS`
+
+```typescript
+const TX_TYPE_WORDS: Record<string, "income" | "expense"> = {
+  ingreso: "income", ingresos: "income", cobro: "income", cobros: "income", entrada: "income",
+  gasto: "expense", gastos: "expense", pago: "expense", pagos: "expense", compra: "expense", egresos: "expense",
+}
+```
+
+#### AI functions in `lib/ai.ts`
+
+| Function | Exported interface | Purpose |
+|---|---|---|
+| `callAIUpdateDetect` | `ParsedUpdate` | Extracts which transaction to modify and what fields to change. Normalizes Spanish field names (`nota` → `observation`, `titulo` → `description`, etc.) |
+| `callAIDeleteDetect` | `ParsedDelete` | Extracts which transaction to delete |
+| `callAIRecurringDetect` | `ParsedRecurring` | Extracts which transaction to mark/unmark and `recurring: boolean` |
+
+All three use `callTextAI` (private helper — compact single-turn call supporting Claude, OpenAI, Gemini) and `sanitizeUserInput` for injection protection.
+
+**Field normalization** in `callAIUpdateDetect`: despite explicit prompt instructions, AI may return Spanish keys. Parser normalizes:
+- `nota / observacion / observación / comentario / detalle` → `observation`
+- `titulo / título / nombre` → `description`
+- `monto` → `amount`
+- `categoria / categoría` → `category`
+
+#### `buildFinancialContext`
+
+Builds the system context string passed to `callAIChat`. Includes:
+- `Cotización USD activa: 1 USD = N ARS` (when `usdRate` is set)
+- Annual + monthly summaries, budget remaining, projection to end of month, daily average
+- Last 60 transactions, each showing ARS amount + original USD amount in parentheses when `currency === "USD"` — e.g. `$ 71.000 ARS (USD 50,00)`
+- Explicit `Ingreso de hoy en USD` / `Gasto de hoy en USD` lines when applicable
+
+#### `buildChatSystemPrompt` (in `lib/ai.ts`)
+
+Sanitizes the financial context (strips HTML, markdown headings, LLM instruction markers) before embedding it between `<datos_financieros>` tags to prevent prompt injection from malicious transaction descriptions. Rule added: AI must NEVER claim to have performed mutations (delete, update, register) — the system executes those; the AI only answers queries.
 
 ### Key Config Notes
 

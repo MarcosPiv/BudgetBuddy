@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
-import { callAI, callAIChat, sanitizeUserInput, type ChatTurn, type AIAttachment } from "@/lib/ai"
+import { callAI, callAIChat, callAIUpdateDetect, callAIDeleteDetect, callAIRecurringDetect, sanitizeUserInput, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import type { DateRange } from "react-day-picker"
 
@@ -36,6 +36,47 @@ import {
 } from "./dashboard/shared"
 
 const TX_PAGE = 6
+
+// Generic words that indicate transaction type rather than a description keyword
+const TX_TYPE_WORDS: Record<string, "income" | "expense"> = {
+  ingreso: "income", ingresos: "income", cobro: "income", cobros: "income", entrada: "income",
+  gasto: "expense", gastos: "expense", pago: "expense", pagos: "expense", compra: "expense", egresos: "expense",
+}
+
+/** Fuzzy-find a transaction by approximate description, optional days-ago, and optional type */
+function findTransactionByMatch(
+  txs: import("@/lib/app-context").Transaction[],
+  match: { description: string; daysAgo?: number; txType?: "income" | "expense" }
+): import("@/lib/app-context").Transaction | null {
+  let candidates = [...txs]
+  if (match.daysAgo !== undefined) {
+    const target = new Date()
+    target.setDate(target.getDate() - match.daysAgo)
+    const targetDay = target.toDateString()
+    candidates = candidates.filter(t => new Date(t.date).toDateString() === targetDay)
+  }
+  // If txType provided, pre-filter by type
+  const typeFilter = match.txType ?? TX_TYPE_WORDS[match.description.toLowerCase()]
+  if (typeFilter) candidates = candidates.filter(t => t.type === typeFilter)
+
+  const terms = match.description.toLowerCase().split(/\s+/).filter(Boolean)
+  // Skip terms that are generic type words — they don't help description matching
+  const descTerms = terms.filter(t => !TX_TYPE_WORDS[t])
+
+  if (descTerms.length > 0) {
+    const scored = candidates
+      .map(t => ({ t, score: descTerms.filter(term => t.description.toLowerCase().includes(term)).length }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || new Date(b.t.date).getTime() - new Date(a.t.date).getTime())
+    if (scored.length > 0) return scored[0].t
+  }
+
+  // Fallback: if type filtering narrowed candidates, return the most recent one
+  if (typeFilter && candidates.length > 0) {
+    return candidates.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+  }
+  return null
+}
 
 export function DashboardPage() {
   const {
@@ -85,7 +126,7 @@ export function DashboardPage() {
   // ── Chat state ───────────────────────────────────────────────────────────────
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: "bot", text: "Hola! Soy tu asistente financiero. Que necesitas registrar hoy?" },
+    { role: "bot", text: "¡Hola! Soy BudgetBuddy AI 🤖\n\n📝 Registrar  →  \"gasté 3500 en almuerzo\" · \"cobré 200 USD\"\n🔍 Consultar  →  \"¿cuánto gasté esta semana?\" · \"¿me alcanza el presupuesto?\"\n✏️ Modificar  →  \"al taxi de ayer, cambiá el monto a 2800\"\n🗑️ Eliminar   →  \"borrá el super de ayer\"\n🔁 Recurrente →  \"marcá el alquiler como recurrente\"\n📊 Analizar   →  \"¿en qué categoría gasto más?\"\n\n¿En qué te ayudo?" },
   ])
   const [chatInput, setChatInput] = useState("")
   const [isChatProcessing, setIsChatProcessing] = useState(false)
@@ -99,6 +140,8 @@ export function DashboardPage() {
   // Refs so onstop always reads fresh values regardless of closure staleness
   const chatMessagesRef = useRef(chatMessages)
   const dispatchChatRef = useRef<((label: string, prev: ChatMessage[], att?: AIAttachment) => Promise<void>) | null>(null)
+  // Tracks the last transaction registered from the chat (for follow-up corrections)
+  const chatLastRegisteredRef = useRef<{ description: string; amount: number; type: "expense" | "income"; currency: "ARS" | "USD" } | null>(null)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -704,7 +747,9 @@ export function DashboardPage() {
     const txLines = recentTxs
       .map(t => {
         const dateStr = new Date(t.date).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
-        return `${dateStr} · ${t.type === "expense" ? "Gasto" : "Ingreso"} · ${t.description} · ${t.category} · ${formatCurrency(toArs(t))}`
+        const arsAmt = formatCurrency(toArs(t))
+        const usdPart = t.currency === "USD" ? ` (USD ${t.amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })})` : ""
+        return `${dateStr} · ${t.type === "expense" ? "Gasto" : "Ingreso"} · ${t.description} · ${t.category} · ${arsAmt}${usdPart}`
       })
       .join("\n")
 
@@ -732,8 +777,16 @@ export function DashboardPage() {
       .map(t => `${t.description}: ${formatCurrency(toArs(t))}`)
       .join(", ")
 
+    const todayUSDIncome = transactions
+      .filter(t => t.type === "income" && t.currency === "USD" && new Date(t.date) >= todayStart)
+      .reduce((a, t) => a + t.amount, 0)
+    const todayUSDExpense = transactions
+      .filter(t => t.type === "expense" && t.currency === "USD" && new Date(t.date) >= todayStart)
+      .reduce((a, t) => a + t.amount, 0)
+
     return [
       `Hoy es ${todayStr}.`,
+      usdRate ? `Cotización USD activa: 1 USD = ${usdRate.toLocaleString("es-AR")} ARS` : null,
       `=== RESUMEN ANUAL ${currentYear} ===`,
       `Ingresos año: ${formatCurrency(sumIncome(yearTxs))}`,
       `Gastos año: ${formatCurrency(sumExpenses(yearTxs))}`,
@@ -749,6 +802,8 @@ export function DashboardPage() {
       `Proyección a fin de mes (ritmo actual): ${formatCurrency(projectionEOM)}`,
       `Promedio diario últimos 7 días: ${formatCurrency(dailyAvg7)}`,
       `Gasto de hoy: ${formatCurrency(todayExp)}`,
+      todayUSDIncome > 0 ? `Ingreso de hoy en USD: USD ${todayUSDIncome.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : null,
+      todayUSDExpense > 0 ? `Gasto de hoy en USD: USD ${todayUSDExpense.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : null,
       top3Month ? `Top 3 gastos más grandes del mes: ${top3Month}` : null,
       ``,
       `=== ÚLTIMAS ${recentTxs.length} TRANSACCIONES ===`,
@@ -821,6 +876,271 @@ export function DashboardPage() {
     setChatInput("")
     const prevMessages = chatMessages
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }])
+
+    const lowerMsg = userMsg.toLowerCase()
+
+    // ── Delete existing transaction (AI-powered) ─────────────────────────────
+    const DELETE_WORDS = ["borrá", "borra", "eliminá", "elimina", "borralo", "borrarla", "eliminalo", "eliminarla", "borrar", "eliminar", "suprimí", "suprimir", "borrá el", "eliminá el"]
+    const isDeleteIntent = DELETE_WORDS.some(w => lowerMsg.includes(w))
+    if (isDeleteIntent) {
+      if (!apiKey.trim()) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para poder eliminar movimientos." }])
+        return
+      }
+      setIsChatProcessing(true)
+      let handled = false
+      try {
+        const del = await callAIDeleteDetect(aiProvider, apiKey, userMsg)
+        if (del.match) {
+          handled = true
+          const found = findTransactionByMatch(transactions, del.match)
+          if (found) {
+            const label = `${found.type === "income" ? "📈" : "📉"} ${found.description} · ${formatCurrency(found.currency === "USD" ? found.amount * (found.txRate ?? usdRate) : found.amount)}`
+            deleteTransaction(found.id, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+            setChatMessages(prev => [...prev, { role: "bot", text: `🗑️ Eliminado — ${label}.` }])
+          } else {
+            const dateHint = del.match.daysAgo !== undefined ? ` de hace ${del.match.daysAgo} día${del.match.daysAgo !== 1 ? "s" : ""}` : ""
+            setChatMessages(prev => [...prev, { role: "bot", text: `No encontré ninguna transacción que coincida con "${del.match!.description}"${dateHint}. Revisá la lista de movimientos y volvé a intentar con el nombre exacto.` }])
+          }
+        }
+      } catch {
+        // handled stays false
+      }
+      if (!handled) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Para eliminar un movimiento decime algo como: \"borrá el super de ayer\" o \"eliminá el taxi de hoy\"." }])
+      }
+      setIsChatProcessing(false)
+      return
+    }
+
+    // ── Mark/unmark recurring (AI-powered) ───────────────────────────────────
+    const RECURRING_WORDS = ["recurrente", "fijo mensual", "es fijo", "marcalo fijo", "marcá fijo", "marcá como fijo", "marcalo recurrente", "marcá recurrente", "marcá como recurrente", "es mensual", "es un fijo", "repetí", "ya no es fijo", "ya no es recurrente", "quitá recurrente", "quitá fijo", "sacá recurrente", "no es más fijo", "no es más recurrente"]
+    const isRecurringIntent = RECURRING_WORDS.some(w => lowerMsg.includes(w))
+    if (isRecurringIntent) {
+      if (!apiKey.trim()) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para usar esta función." }])
+        return
+      }
+      setIsChatProcessing(true)
+      let handled = false
+      try {
+        const rec = await callAIRecurringDetect(aiProvider, apiKey, userMsg)
+        if (rec.match) {
+          handled = true
+          const found = findTransactionByMatch(transactions, rec.match)
+          if (found) {
+            updateTransaction(found.id, {
+              description: found.description, amount: found.amount, type: found.type,
+              icon: found.icon, category: found.category, date: new Date(found.date),
+              currency: found.currency, amountUsd: found.amountUsd, txRate: found.txRate,
+              exchangeRateType: found.exchangeRateType as ExchangeRateType | null,
+              observation: found.observation, isRecurring: rec.recurring,
+            }, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+            const action = rec.recurring ? "marcada como recurrente 🔁" : "ya no es recurrente"
+            setChatMessages(prev => [...prev, { role: "bot", text: `✅ ${found.description} — ${action}.` }])
+          } else {
+            const dateHint = rec.match.daysAgo !== undefined ? ` de hace ${rec.match.daysAgo} día${rec.match.daysAgo !== 1 ? "s" : ""}` : ""
+            setChatMessages(prev => [...prev, { role: "bot", text: `No encontré ninguna transacción que coincida con "${rec.match!.description}"${dateHint}.` }])
+          }
+        }
+      } catch {
+        // handled stays false
+      }
+      if (!handled) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Para marcar un movimiento como recurrente decime algo como: \"marcá el alquiler como recurrente\" o \"el gym es un gasto fijo mensual\"." }])
+      }
+      setIsChatProcessing(false)
+      return
+    }
+
+    // ── Modify existing transaction by description/date (AI-powered) ────────
+    // Use includes() — avoids \b word-boundary edge cases with Spanish accented chars
+    const MODIFY_WORDS = ["agregale", "ponele", "modificá", "modifica", "renombrá", "renombra", "editá", "edita", "cambiale", "añadile", "agrega", "ponele", "cambia"]
+    const isModifyIntent = MODIFY_WORDS.some(w => lowerMsg.includes(w))
+    if (isModifyIntent) {
+      if (!apiKey.trim()) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para poder modificar movimientos." }])
+        return
+      }
+      setIsChatProcessing(true)
+      let handled = false
+      try {
+        const upd = await callAIUpdateDetect(aiProvider, apiKey, userMsg)
+        if (upd.match && Object.values(upd.updates).some(v => v !== undefined)) {
+          handled = true
+          const found = findTransactionByMatch(transactions, upd.match)
+          if (found) {
+            updateTransaction(found.id, {
+              description: upd.updates.description ?? found.description,
+              amount: upd.updates.amount ?? found.amount,
+              type: upd.updates.type ?? found.type,
+              icon: upd.updates.icon ?? found.icon,
+              category: upd.updates.category ?? found.category,
+              date: new Date(found.date),
+              currency: found.currency,
+              amountUsd: found.amountUsd,
+              txRate: found.txRate,
+              exchangeRateType: found.exchangeRateType as ExchangeRateType | null,
+              observation: upd.updates.observation ?? found.observation,
+              isRecurring: found.isRecurring ?? false,
+            }, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+            const fieldLabels: Record<string, string> = {
+              observation: "nota", description: "título", amount: "monto", category: "categoría", type: "tipo",
+            }
+            const summary = Object.entries(upd.updates)
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => `${fieldLabels[k] ?? k}: "${v}"`)
+              .join(", ")
+            setChatMessages(prev => [...prev, { role: "bot", text: `✅ Actualizado — ${found.description} — ${summary}.` }])
+          } else {
+            const dateHint = upd.match.daysAgo !== undefined ? ` de hace ${upd.match.daysAgo} día${upd.match.daysAgo !== 1 ? "s" : ""}` : ""
+            setChatMessages(prev => [...prev, { role: "bot", text: `No encontré ninguna transacción que coincida con "${upd.match!.description}"${dateHint}. Revisá la lista de movimientos y volvé a intentar con el nombre exacto.` }])
+          }
+        }
+      } catch {
+        // handled stays false → show hint below
+      }
+      if (!handled) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Para modificar un movimiento decime algo como: \"al padel de ayer, agregale la nota \'detalle\'\" o \"editá el gym de hoy, cambiá el monto a 8000\"." }])
+      }
+      setIsChatProcessing(false)
+      return
+    }
+
+    // ── Update intent: check before trying to parse as a new transaction ────
+    const UPDATE_INTENT = /actualiz|corregí|corrig|cambi[aé]|era en|fue en|fueron en|modific|es en|son en|no oficial|no blue|no tarjeta|no mep|en dólar|en dolar/i
+    const RATE_PATTERNS: { pattern: RegExp; type: ExchangeRateType }[] = [
+      { pattern: /blue|azul/i, type: "BLUE" },
+      { pattern: /oficial/i, type: "OFICIAL" },
+      { pattern: /tarjeta/i, type: "TARJETA" },
+      { pattern: /mep|bolsa|ccl/i, type: "MEP" },
+    ]
+    const hasRateKeyword = RATE_PATTERNS.some(({ pattern }) => pattern.test(userMsg))
+    const isQuestion = /[?]/.test(userMsg) || /^(qué|que|cuál|cual|cuánto|cuanto|cómo|como)\b/i.test(userMsg)
+    if ((UPDATE_INTENT.test(userMsg) || (hasRateKeyword && !isQuestion)) && chatLastRegisteredRef.current) {
+      const ref = chatLastRegisteredRef.current
+      // Find the most recently added matching transaction
+      const found = [...transactions]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .find(t => t.description === ref.description && Math.abs(t.amount - ref.amount) < 0.01 && t.type === ref.type)
+      if (found) {
+        // Detect new rate type
+        let newRateType: ExchangeRateType | null = null
+        let newRate: number | undefined
+        for (const { pattern, type: rateType } of RATE_PATTERNS) {
+          if (pattern.test(userMsg)) {
+            newRateType = rateType
+            const lk = rateType.toLowerCase() as keyof typeof liveRates
+            newRate = (liveRates[lk] as { venta?: number } | null)?.venta ?? usdRate
+            break
+          }
+        }
+        // Detect new amount (first number in message, if any)
+        const numMatch = userMsg.match(/\b(\d[\d.,]*)\b/)
+        const newAmount = numMatch ? parseFloat(numMatch[1].replace(",", ".")) : null
+        const hasAmountChange = newAmount && newAmount > 0 && Math.abs(newAmount - ref.amount) > 0.01
+
+        if (newRateType || hasAmountChange) {
+          const finalAmount = hasAmountChange ? newAmount! : found.amount
+          // If updating rate type and transaction was ARS, convert to USD
+          const finalCurrency: "ARS" | "USD" = newRateType ? "USD" : found.currency
+          const finalRate = newRate ?? found.txRate
+          const finalRateType = newRateType ?? (found.exchangeRateType as ExchangeRateType | null)
+          updateTransaction(found.id, {
+            description: found.description,
+            amount: finalAmount,
+            type: found.type,
+            icon: found.icon,
+            category: found.category,
+            date: new Date(found.date),
+            currency: finalCurrency,
+            amountUsd: finalCurrency === "USD" ? finalAmount : undefined,
+            txRate: finalCurrency === "USD" ? finalRate : undefined,
+            exchangeRateType: finalCurrency === "USD" ? finalRateType : null,
+            observation: found.observation,
+            isRecurring: found.isRecurring ?? false,
+          }, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+          chatLastRegisteredRef.current = null
+          const arsTotal = finalCurrency === "USD" ? finalAmount * (finalRate ?? usdRate) : finalAmount
+          const parts: string[] = []
+          if (newRateType) parts.push(`tipo de cambio: ${newRateType}${newRate ? ` · $${newRate.toLocaleString("es-AR")}` : ""}`)
+          if (hasAmountChange) parts.push(`monto: ${finalAmount}`)
+          parts.push(`total: ${formatCurrency(arsTotal)}`)
+          setChatMessages(prev => [...prev, { role: "bot", text: `✅ Actualizado — ${parts.join(", ")}.` }])
+          return
+        }
+      }
+    }
+
+    // ── If message has numbers, try transaction parsing first ────────────────
+    if (apiKey.trim() && /\d/.test(userMsg)) {
+      setIsChatProcessing(true)
+      try {
+        const aiResult = await callAI(aiProvider, apiKey, userMsg)
+        const results = Array.isArray(aiResult) ? aiResult : [aiResult]
+        const valid = results.filter(r => r.type !== "unknown")
+        if (valid.length > 0) {
+          const confirmParts: string[] = []
+          let usdToast = false
+          let lastCurr: "ARS" | "USD" = "ARS"
+          for (const result of valid) {
+            // Date
+            let txDate2 = new Date()
+            if (typeof result.daysAgo === "number" && result.daysAgo > 0) {
+              txDate2 = new Date()
+              txDate2.setDate(txDate2.getDate() - result.daysAgo)
+              txDate2.setHours(12, 0, 0, 0)
+            }
+            // Currency
+            let curr2: "ARS" | "USD" = "ARS"
+            let rate2: number | undefined
+            let rateType2: ExchangeRateType | null = null
+            if (result.suggestedCurrency === "USD") {
+              curr2 = "USD"
+              const rt = result.suggestedExRateType ?? newExRateType
+              const lk = rt.toLowerCase() as keyof typeof liveRates
+              rate2 = (liveRates[lk] as { venta?: number } | null)?.venta ?? usdRate
+              rateType2 = rt as ExchangeRateType
+              if (!usdToast) {
+                toast("💵 Moneda detectada: USD", { description: `Tasa ${rt} · $${rate2.toLocaleString("es-AR")}` })
+                usdToast = true
+              }
+            }
+            addTransaction({
+              description: result.description,
+              amount: result.amount,
+              type: result.type as "expense" | "income",
+              icon: result.icon,
+              category: result.category,
+              date: txDate2,
+              currency: curr2,
+              amountUsd: curr2 === "USD" ? result.amount : undefined,
+              txRate: rate2,
+              exchangeRateType: rateType2,
+              observation: result.observation,
+              isRecurring: result.suggestRecurring === true,
+            }, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+            const arsAmt = curr2 === "USD" ? (result.amount * (rate2 ?? usdRate)) : result.amount
+            confirmParts.push(`${result.type === "income" ? "📈" : "📉"} ${result.description} · ${formatCurrency(arsAmt)}`)
+            lastCurr = curr2
+          }
+          // Track last registered for potential follow-up correction
+          if (valid.length === 1) {
+            chatLastRegisteredRef.current = { description: valid[0].description, amount: valid[0].amount, type: valid[0].type as "expense" | "income", currency: lastCurr }
+          }
+          const confirmText = valid.length === 1
+            ? `✅ ¡Registrado! ${confirmParts[0]}. ¿Algo más?`
+            : `✅ Registré ${valid.length} transacciones:\n${confirmParts.map(p => `• ${p}`).join("\n")}`
+          setChatMessages(prev => [...prev, { role: "bot", text: confirmText }])
+          setIsChatProcessing(false)
+          return
+        }
+      } catch {
+        // Fall through to conversational AI on any error
+      }
+      setIsChatProcessing(false)
+    }
+
     await dispatchChatMessage(userMsg, prevMessages)
   }
 

@@ -212,7 +212,7 @@ export function ChatPanel({
                   )}
                 </div>
                 <div
-                  className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${msg.role === "bot"
+                  className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === "bot"
                     ? "bg-secondary text-foreground rounded-tl-md"
                     : "bg-primary text-primary-foreground rounded-tr-md"
                     }`}

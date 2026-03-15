@@ -25,6 +25,27 @@ export interface AIAttachment {
   file?: File // required for OpenAI Whisper audio transcription
 }
 
+export interface ParsedUpdate {
+  match: { description: string; daysAgo?: number; txType?: "income" | "expense" } | null
+  updates: {
+    observation?: string
+    description?: string
+    amount?: number
+    category?: string
+    icon?: string
+    type?: "income" | "expense"
+  }
+}
+
+export interface ParsedDelete {
+  match: { description: string; daysAgo?: number; txType?: "income" | "expense" } | null
+}
+
+export interface ParsedRecurring {
+  match: { description: string; daysAgo?: number; txType?: "income" | "expense" } | null
+  recurring: boolean // true = mark as recurring, false = remove recurring flag
+}
+
 // ── Prompt injection protection ───────────────────────────────────────────────
 
 const INJECTION_PATTERNS = [
@@ -194,6 +215,11 @@ Reglas de respuesta:
 - "¿cuáles son mis gastos más grandes?" → usás "Top 3 gastos más grandes del mes" del contexto
 - "¿cuánto gasté hoy?" → usás "Gasto de hoy" del contexto
 - Sé conciso: máximo 3-4 oraciones. Si la pregunta no es de finanzas, redirigilo amablemente.
+- Si el usuario quiere registrar un gasto/ingreso (ej: "gasté 5000 en el super"), escribí el monto y descripción y se registra automáticamente.
+- Para modificar: "al taxi de ayer, cambiá el monto a 2800" o "agregale una nota al gym".
+- Para eliminar: "borrá el super de ayer".
+- Para marcar recurrente: "marcá el alquiler como recurrente".
+- NUNCA digas que realizaste ninguna de estas acciones. El sistema las ejecuta; vos solo respondés consultas.
 
 `
 }
@@ -599,6 +625,64 @@ async function callGeminiChat(apiKey: string, context: string, history: ChatTurn
   return text.trim()
 }
 
+// ── Update detection ─────────────────────────────────────────────────────────
+
+/** Sends a single-turn text prompt to the active provider and returns the raw text response. */
+async function callTextAI(provider: AIProvider, apiKey: string, systemPrompt: string, userContent: string): Promise<string> {
+  if (provider === "claude") {
+    validateKeyFormat("claude", apiKey)
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-allow-browser": "true" },
+      body: JSON.stringify({ model: "claude-3-5-haiku-20241022", max_tokens: 200, system: systemPrompt, messages: [{ role: "user", content: userContent }] }),
+    })
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateError(e?.error?.message || `Error ${r.status}`)) }
+    return (await r.json()).content?.[0]?.text ?? ""
+  }
+  if (provider === "openai") {
+    validateKeyFormat("openai", apiKey)
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 200, temperature: 0.1, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }] }),
+    })
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateError(e?.error?.message || `Error ${r.status}`)) }
+    return (await r.json()).choices?.[0]?.message?.content ?? ""
+  }
+  validateKeyFormat("gemini", apiKey)
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({ system_instruction: { parts: [{ text: systemPrompt }] }, contents: [{ parts: [{ text: userContent }] }], generationConfig: { maxOutputTokens: 200, temperature: 0.1 } }),
+  })
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateError(e?.error?.message || `Error ${r.status}`)) }
+  return (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+}
+
+const UPDATE_DETECT_PROMPT = `Analizá el mensaje e interpretalo como una instrucción para MODIFICAR una transacción financiera existente.
+
+Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown.
+
+Formato:
+{"match":{"description":"texto para buscar","daysAgo":0,"txType":"income"},"updates":{"observation":"nueva nota"}}
+
+Reglas de MATCH:
+- match.description: texto corto que aparece en el nombre de la transacción (ej: "padel", "super", "nafta", "venta", "gym"). Sin artículos ni preposiciones. Si el usuario dice "el ingreso/gasto/cobro de X" usá "X" como description.
+- match.daysAgo: días desde hoy (0=hoy, 1=ayer, 2=anteayer, N=hace N días). Incluir SOLO si el usuario menciona fecha relativa.
+- match.txType: "income" si el usuario menciona ingreso/cobro/venta/entrada. "expense" si menciona gasto/compra/pago. Omitir si no está claro.
+
+Reglas de UPDATES — usar EXACTAMENTE estos nombres de campo en inglés:
+- "observation": nota u observación nueva (string). Usar cuando dice "nota", "observación", "descripción adicional", "comentario", "agregale/ponele/guardá".
+- "description": nuevo título/nombre de la transacción (string, máx 35 chars). Usar cuando dice "renombrá", "cambiá el título/nombre a X".
+- "amount": nuevo monto (número positivo). Usar cuando dice "cambiá el monto a N", "eran N".
+- "category": nueva categoría. Solo: "Comida","Transporte","Salidas","Suscripciones","Deporte","Educacion","Salud","Trabajo","General".
+- "type": "income" o "expense". Usar cuando dice "era un ingreso/gasto".
+
+IMPORTANTE: Los nombres de campo SIEMPRE en inglés (observation, description, amount, category, type). NUNCA usar "nota", "titulo", "monto", "categoria" como claves.
+
+Si NO es una instrucción de modificación → {"match":null,"updates":{}}
+daysAgo: calculá en base a la fecha de hoy del mensaje.`
+
 // ── Public entry points ───────────────────────────────────────────────────────
 export async function callAI(
   provider: AIProvider,
@@ -615,6 +699,137 @@ export async function callAI(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))
+  }
+}
+
+export async function callAIUpdateDetect(
+  provider: AIProvider,
+  apiKey: string,
+  message: string
+): Promise<ParsedUpdate> {
+  const today = new Date().toISOString().split("T")[0]
+  try {
+    const safeMsg = sanitizeUserInput(message)
+    const raw = await callTextAI(provider, apiKey, UPDATE_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
+    const clean = raw.trim().replace(/```json|```/g, "").trim()
+    const m = clean.match(/\{[\s\S]*\}/)
+    if (!m) return { match: null, updates: {} }
+    const p = JSON.parse(m[0])
+    if (!p.match?.description) return { match: null, updates: {} }
+    // Normalize alternative Spanish field names the AI might use despite instructions
+    const u = p.updates ?? {}
+    const rawObs = u.observation ?? u.nota ?? u.observacion ?? u.observación ?? u.comentario ?? u.detalle
+    const rawDesc = u.description ?? u.titulo ?? u.título ?? u.nombre
+    const rawAmt = u.amount ?? u.monto
+    const rawCat = u.category ?? u.categoria ?? u.categoría
+    const rawType = u.type ?? u.tipo
+    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
+    return {
+      match: {
+        description: String(p.match.description).slice(0, 50),
+        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
+        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
+      },
+      updates: {
+        observation: rawObs != null ? String(rawObs).slice(0, 300) : undefined,
+        description: rawDesc ? String(rawDesc).slice(0, 35) : undefined,
+        amount: typeof rawAmt === "number" && rawAmt > 0 ? rawAmt : undefined,
+        category: VALID_CATEGORIES.includes(rawCat) ? rawCat : undefined,
+        icon: VALID_ICONS.includes(u.icon) ? u.icon : undefined,
+        type: (["income", "expense"] as const).includes(rawType) ? rawType as "income" | "expense" : undefined,
+      },
+    }
+  } catch {
+    return { match: null, updates: {} }
+  }
+}
+
+const DELETE_DETECT_PROMPT = `Analizá el mensaje e interpretalo como una instrucción para ELIMINAR una transacción financiera existente.
+
+Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown.
+
+Formato:
+{"match":{"description":"texto para buscar","daysAgo":0,"txType":"expense"}}
+
+Reglas de MATCH (iguales al caso de modificación):
+- match.description: texto corto que identifica la transacción (ej: "padel", "super", "taxi"). Sin artículos ni preposiciones.
+- match.daysAgo: días desde hoy (0=hoy, 1=ayer). Incluir SOLO si el usuario menciona fecha relativa.
+- match.txType: "income" o "expense" si el usuario lo menciona explícitamente.
+
+Si NO es instrucción de eliminación → {"match":null}
+daysAgo: calculá en base a la fecha de hoy del mensaje.`
+
+export async function callAIDeleteDetect(
+  provider: AIProvider,
+  apiKey: string,
+  message: string
+): Promise<ParsedDelete> {
+  const today = new Date().toISOString().split("T")[0]
+  try {
+    const safeMsg = sanitizeUserInput(message)
+    const raw = await callTextAI(provider, apiKey, DELETE_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
+    const clean = raw.trim().replace(/```json|```/g, "").trim()
+    const m = clean.match(/\{[\s\S]*\}/)
+    if (!m) return { match: null }
+    const p = JSON.parse(m[0])
+    if (!p.match?.description) return { match: null }
+    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
+    return {
+      match: {
+        description: String(p.match.description).slice(0, 50),
+        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
+        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
+      },
+    }
+  } catch {
+    return { match: null }
+  }
+}
+
+const RECURRING_DETECT_PROMPT = `Analizá el mensaje e interpretalo como una instrucción para MARCAR o DESMARCAR una transacción como recurrente (gasto/ingreso fijo mensual).
+
+Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown.
+
+Formato:
+{"match":{"description":"texto para buscar","daysAgo":0,"txType":"expense"},"recurring":true}
+
+Reglas de MATCH:
+- match.description: texto corto que identifica la transacción (ej: "alquiler", "gym", "netflix", "sueldo").
+- match.daysAgo: incluir SOLO si el usuario menciona fecha relativa.
+- match.txType: "income" o "expense" si el usuario lo menciona.
+
+Reglas de RECURRING:
+- recurring: true si dice "marcá como recurrente", "es fijo", "es mensual", "repetí", "agregá como fijo", etc.
+- recurring: false si dice "quitá recurrente", "ya no es fijo", "sacá recurrente", "no es más mensual", etc.
+
+Si NO es instrucción de recurrente → {"match":null,"recurring":false}
+daysAgo: calculá en base a la fecha de hoy del mensaje.`
+
+export async function callAIRecurringDetect(
+  provider: AIProvider,
+  apiKey: string,
+  message: string
+): Promise<ParsedRecurring> {
+  const today = new Date().toISOString().split("T")[0]
+  try {
+    const safeMsg = sanitizeUserInput(message)
+    const raw = await callTextAI(provider, apiKey, RECURRING_DETECT_PROMPT, `Hoy es ${today}.\nMensaje: """${safeMsg}"""`)
+    const clean = raw.trim().replace(/```json|```/g, "").trim()
+    const m = clean.match(/\{[\s\S]*\}/)
+    if (!m) return { match: null, recurring: false }
+    const p = JSON.parse(m[0])
+    if (!p.match?.description) return { match: null, recurring: false }
+    const rawTxType = p.match.txType ?? p.match.tipo ?? p.match.type
+    return {
+      match: {
+        description: String(p.match.description).slice(0, 50),
+        daysAgo: typeof p.match.daysAgo === "number" && p.match.daysAgo >= 0 ? Math.floor(p.match.daysAgo) : undefined,
+        txType: (["income", "expense"] as const).includes(rawTxType) ? rawTxType as "income" | "expense" : undefined,
+      },
+      recurring: p.recurring === true,
+    }
+  } catch {
+    return { match: null, recurring: false }
   }
 }
 
