@@ -459,7 +459,7 @@ export function DashboardPage() {
           amountUsd: currForResult === "USD" ? result.amount : undefined,
           txRate: currForResult === "USD" ? rateForResult : undefined,
           exchangeRateType: rateTypeForResult,
-          observation: obs,
+          observation: obs ?? result.observation,
           isRecurring: result.suggestRecurring === true,
           receiptUrl: valid.length === 1 ? receiptUrl : undefined,
         }, (msg) => {

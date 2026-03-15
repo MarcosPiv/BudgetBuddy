@@ -10,6 +10,7 @@ export interface ParsedTransaction {
   suggestRecurring?: boolean
   suggestedCurrency?: "USD"     // only present when AI explicitly detects USD in the text
   suggestedExRateType?: "BLUE" | "OFICIAL" | "TARJETA" | "MEP" // only present when rate type is explicitly mentioned
+  observation?: string          // installment note e.g. "Cuota 1/6", populated by AI when cuotas detected
 }
 
 export interface ChatTurn {
@@ -69,8 +70,11 @@ Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown, sin backt
 Si hay UNA sola transacción:
 {"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false}
 
+Si hay cuotas, agregá el campo observation (ver reglas abajo):
+{"type":"expense","description":"Celular","amount":20000,"category":"General","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false,"observation":"Cuota 1/6"}
+
 Si el mensaje menciona MÚLTIPLES transacciones, devolvé un array JSON (una por item):
-[{"type":"expense","description":"...","amount":número,"category":"...","icon":"...","daysAgo":0,"suggestRecurring":false},{"type":"expense","description":"...","amount":número,"category":"...","icon":"...","daysAgo":0,"suggestRecurring":false}]
+[{"type":"expense","description":"Supermercado","amount":3000,"category":"Comida","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false},{"type":"expense","description":"Café","amount":800,"category":"Salidas","icon":"Coffee","daysAgo":0,"suggestRecurring":false}]
 
 Para ingresos usar type:"income".
 
@@ -121,7 +125,26 @@ Campo suggestedExRateType (incluir SOLO si se menciona explícitamente el tipo d
 - "OFICIAL": menciona "oficial", "dólar oficial", "bco", "banco"
 - "TARJETA": menciona "tarjeta", "con tarjeta", "dólar tarjeta", "recargo"
 - "MEP": menciona "MEP", "dólar MEP", "bolsa", "contado con liqui", "CCL"
-- Omitir completamente si no se especifica el tipo (el sistema usará el configurado por el usuario)`
+- Omitir completamente si no se especifica el tipo (el sistema usará el configurado por el usuario)
+
+Campo observation (incluir SOLO cuando se detectan cuotas o financiación):
+- "en N cuotas de X" → amount: X (monto por cuota), observation: "Cuota 1/N"
+- "a N cuotas" sin monto por cuota → amount: monto_total ÷ N, observation: "Cuota 1/N"
+- "pagué la cuota N de X" → amount: X, observation: "Cuota N/?"
+- Ejemplos: "celular en 6 cuotas de 20000" → amount:20000, observation:"Cuota 1/6"
+- Ejemplos: "notebook en 12 cuotas de 15000" → amount:15000, observation:"Cuota 1/12"
+- Omitir completamente el campo si no hay cuotas ni financiación
+
+Cuándo separar en MÚLTIPLES transacciones:
+- Separar cuando hay ≥2 montos distintos o ≥2 establecimientos distintos unidos por: "y", "después", "luego", "también", "además", "encima", "y encima", "más tarde"
+- Ejemplos que SÍ separan:
+  * "fui al super y gasté 3000, después tomé un café por 800" → [{super,3000},{café,800}]
+  * "cargué nafta por 5000 y también pagué el peaje de 400" → [{nafta,5000},{peaje,400}]
+  * "gasté 2000 en el kiosco y 1500 en el colectivo" → [{kiosco,2000},{colectivo,1500}]
+- Ejemplos que NO separan (misma transacción):
+  * "compré zapatillas y remera por 8000" → un solo gasto (dos ítems, un monto)
+  * "gasté 3000 en el super de Palermo" → un solo gasto con contexto adicional
+  * "almorcé y tomé café todo por 1200" → un solo gasto`
 
 function buildChatSystemPrompt(context: string): string {
   return `Sos BudgetBuddy AI, un asistente financiero personal para Argentina. Hablás en español rioplatense informal (vos, che).
@@ -171,6 +194,11 @@ function validateOne(raw: ParsedTransaction): ParsedTransaction {
   // suggestedExRateType: only known rate types accepted, otherwise remove
   const VALID_RATE_TYPES = ["BLUE", "OFICIAL", "TARJETA", "MEP"]
   if (!VALID_RATE_TYPES.includes(raw.suggestedExRateType as string)) delete raw.suggestedExRateType
+  // observation: sanitize — trim, max 100 chars, strip HTML tags; remove if empty
+  if (raw.observation !== undefined) {
+    const sanitized = String(raw.observation).replace(/<[^>]*>/g, "").trim().slice(0, 100)
+    raw.observation = sanitized || undefined
+  }
   return raw
 }
 
