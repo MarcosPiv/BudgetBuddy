@@ -122,8 +122,6 @@ export function DashboardPage() {
     observation: "",
     isRecurring: false,
   })
-  const [longPressId, setLongPressId] = useState<string | null>(null)
-  const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragActiveRef = useRef(false)
   const handleDeleteWithUndo = (tx: (typeof transactions)[number]) => {
     deleteTransaction(tx.id, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) })
@@ -869,7 +867,6 @@ export function DashboardPage() {
   // ── Edit handlers ────────────────────────────────────────────────────────────
   const openEdit = (tx: import("@/lib/app-context").Transaction) => {
     setEditingTx(tx)
-    setLongPressId(null)
     setEditForm({
       description: tx.description,
       amount: String(tx.amount),
@@ -913,22 +910,6 @@ export function DashboardPage() {
       setTimeout(() => setAiError(null), 5000)
     })
     setEditingTx(null)
-  }
-
-  // ── Touch / long-press handlers ──────────────────────────────────────────────
-  const handleTouchStart = (txId: string) => {
-    lpTimerRef.current = setTimeout(() => {
-      setLongPressId(txId)
-      setExpandedTx(null)
-      if (navigator.vibrate) navigator.vibrate(40)
-    }, 500)
-  }
-
-  const handleTouchEnd = () => {
-    if (lpTimerRef.current) {
-      clearTimeout(lpTimerRef.current)
-      lpTimerRef.current = null
-    }
   }
 
   // ── Calendar / filter helpers ────────────────────────────────────────────────
@@ -1133,15 +1114,10 @@ export function DashboardPage() {
               setSearchQuery={setSearchQuery}
               expandedTx={expandedTx}
               setExpandedTx={setExpandedTx}
-              longPressId={longPressId}
-              setLongPressId={setLongPressId}
               dragActiveRef={dragActiveRef}
-              lpTimerRef={lpTimerRef}
               usdRate={usdRate}
               openEdit={openEdit}
               onDelete={handleDeleteWithUndo}
-              handleTouchStart={handleTouchStart}
-              handleTouchEnd={handleTouchEnd}
             />
           </main>
 

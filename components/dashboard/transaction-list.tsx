@@ -6,6 +6,7 @@ import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
   Search, StickyNote, ShoppingCart, Wallet,
 } from "lucide-react"
+// Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
 import { ReceiptImage } from "./receipt-image"
 import { ExchangeTypeBadge } from "./exchange-type-badge"
@@ -49,15 +50,10 @@ interface TransactionListProps {
   setSearchQuery: (q: string) => void
   expandedTx: string | null
   setExpandedTx: (id: string | null) => void
-  longPressId: string | null
-  setLongPressId: (id: string | null) => void
   dragActiveRef: React.MutableRefObject<boolean>
-  lpTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   usdRate: number
   openEdit: (tx: Transaction) => void
   onDelete: (tx: Transaction) => void
-  handleTouchStart: (txId: string) => void
-  handleTouchEnd: () => void
 }
 
 export function TransactionList({
@@ -71,15 +67,10 @@ export function TransactionList({
   setSearchQuery,
   expandedTx,
   setExpandedTx,
-  longPressId,
-  setLongPressId,
   dragActiveRef,
-  lpTimerRef,
   usdRate,
   openEdit,
   onDelete,
-  handleTouchStart,
-  handleTouchEnd,
 }: TransactionListProps) {
 
   // Build flat list with date separators
@@ -219,11 +210,7 @@ export function TransactionList({
                   className="group relative"
                 >
                   <SwipeCard
-                    onDragStart={() => {
-                      dragActiveRef.current = true
-                      if (lpTimerRef.current) clearTimeout(lpTimerRef.current)
-                      setLongPressId(null)
-                    }}
+                    onDragStart={() => { dragActiveRef.current = true }}
                     onDragEnd={(swipedLeft, swipedRight) => {
                       setTimeout(() => { dragActiveRef.current = false }, 50)
                       if (swipedLeft) onDelete(tx)
@@ -233,10 +220,7 @@ export function TransactionList({
                     {/* Card row */}
                     <div
                       className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 hover:bg-secondary/30 active:bg-secondary/50 transition-colors cursor-pointer text-left select-none"
-                      onClick={() => { if (dragActiveRef.current || longPressId === tx.id) return; setExpandedTx(isExpanded ? null : tx.id) }}
-                      onTouchStart={() => handleTouchStart(tx.id)}
-                      onTouchEnd={handleTouchEnd}
-                      onTouchMove={handleTouchEnd}
+                      onClick={() => { if (dragActiveRef.current) return; setExpandedTx(isExpanded ? null : tx.id) }}
                     >
                       <div className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
                         <Icon className={`w-5 h-5 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
@@ -291,44 +275,6 @@ export function TransactionList({
                       )}
                     </div>
                   </SwipeCard>
-
-                  {/* Mobile long-press action row */}
-                  <AnimatePresence>
-                    {longPressId === tx.id && (
-                      <motion.div
-                        className="flex md:hidden items-center gap-2 mt-1 px-2 py-2 rounded-xl bg-secondary/80 border border-border"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.18 }}
-                      >
-                        <button
-                          type="button"
-                          className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium cursor-pointer active:bg-primary/20"
-                          onClick={() => openEdit(tx)}
-                        >
-                          <Pencil className="w-4 h-4" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-destructive/10 text-destructive text-sm font-medium cursor-pointer active:bg-destructive/20"
-                          onClick={() => { onDelete(tx); setLongPressId(null) }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Eliminar
-                        </button>
-                        <button
-                          type="button"
-                          className="p-2 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
-                          onClick={() => setLongPressId(null)}
-                          aria-label="Cerrar"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
 
                   {/* Observation + Receipt expand */}
                   <AnimatePresence>

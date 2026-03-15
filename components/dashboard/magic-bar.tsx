@@ -188,6 +188,16 @@ export function MagicBar({
     return () => clearInterval(interval)
   }, [isRecording])
 
+  // Reset gesture state when recording stops
+  useEffect(() => {
+    if (!isRecording) {
+      setIsClickMode(false)
+      setIsLocked(false)
+      setDragX(0)
+      setDragY(0)
+    }
+  }, [isRecording])
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
     const s = seconds % 60
@@ -662,44 +672,73 @@ export function MagicBar({
                     )}
                   </div>
 
-                  {/* DESKTOP: both buttons always visible */}
-                  <div className="hidden md:flex relative items-center shrink-0 mr-1.5">
-                    <Button
-                      type="button"
-                      size="icon"
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        setIsClickMode(true);
-                        if (isRecording) {
-                          stopRecording({ autoSubmit: true });
-                        } else {
-                          startRecording();
-                        }
-                      }}
-                      disabled={isProcessing}
-                      className={`transition-all select-none touch-none cursor-pointer z-10 ${isRecording
-                        ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
-                        : "bg-primary text-primary-foreground hover:bg-primary/90"
-                        }`}
-                      aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
-                    >
-                      {isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
-                    </Button>
+                  {/* DESKTOP: idle → Mic+Send; recording → Trash+Send */}
+                  <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                    <AnimatePresence mode="popLayout">
+                      {isRecording && isClickMode ? (
+                        <motion.div
+                          key="desktop-recording"
+                          className="flex items-center gap-1.5"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <Button
+                            type="button"
+                            size="icon"
+                            onClick={() => { stopRecording({ cancel: true }); setIsClickMode(false) }}
+                            className="bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer"
+                            aria-label="Cancelar grabación"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            onClick={() => { stopRecording({ autoSubmit: true }); setIsClickMode(false) }}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-md"
+                            aria-label="Enviar audio"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="desktop-idle"
+                          className="flex items-center gap-1.5"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <Button
+                            type="button"
+                            size="icon"
+                            onPointerDown={(e) => {
+                              e.preventDefault()
+                              setIsClickMode(true)
+                              startRecording()
+                            }}
+                            disabled={isProcessing}
+                            className="bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer"
+                            aria-label="Grabar audio"
+                          >
+                            <Mic className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="submit"
+                            size="icon"
+                            disabled={isProcessing}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 cursor-pointer"
+                            aria-label="Enviar"
+                          >
+                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          </Button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-
-                  <Button
-                    type="submit"
-                    size="icon"
-                    className="hidden md:flex bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 cursor-pointer"
-                    disabled={isProcessing}
-                    aria-label="Enviar"
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                  </Button>
                 </div>
               </div>
 

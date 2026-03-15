@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Bot, User, Send, Mic, Loader2, Trash2, Lock, ChevronLeft } from "lucide-react"
+import { X, Bot, User, Send, Mic, Loader2, Trash2, Lock, ChevronLeft, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ChatMessage } from "./shared"
 
@@ -146,6 +146,13 @@ export function ChatPanel({
   const lockProgress = Math.min(dragY / 100, 1)
   const cancelProgress = Math.min(dragX / 100, 1)
 
+  // Derived button visibility
+  const showLockedButtons = isChatRecording && (isLocked || isClickMode)
+  const showMicButton =
+    (!isChatRecording && !isChatProcessing && chatInput.trim().length === 0) ||
+    (isChatRecording && !isLocked && !isClickMode)
+  const showSendButton = !isChatRecording && (chatInput.trim().length > 0 || isChatProcessing)
+
   return (
     <AnimatePresence>
       {chatOpen && (
@@ -252,15 +259,21 @@ export function ChatPanel({
                   {/* Canvas waveform */}
                   <AudioWaveform audioStream={chatAudioStream} />
 
-                  {/* Slide-to-cancel hint */}
+                  {/* Slide-to-cancel hint — mobile, not locked, not click mode */}
                   {!isClickMode && !isLocked && (
                     <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: Math.max(0, 1 - cancelProgress * 1.2) }}
-                      className="flex items-center gap-0.5 shrink-0 text-muted-foreground/60 pointer-events-none"
+                      className="flex items-center gap-0.5 shrink-0 pointer-events-none"
+                      style={{ opacity: Math.max(0, 1 - cancelProgress * 1.4) }}
                     >
-                      <ChevronLeft className="w-3 h-3" />
-                      <span className="text-[10px] font-medium whitespace-nowrap">Cancelar</span>
+                      <motion.div
+                        className="flex items-center"
+                        animate={{ x: [-1, -4, -1] }}
+                        transition={{ repeat: Infinity, duration: 1.1, ease: "easeInOut" }}
+                      >
+                        <ChevronLeft className="w-3 h-3 text-muted-foreground/55" />
+                        <ChevronLeft className="w-3 h-3 text-muted-foreground/30 -ml-1.5" />
+                      </motion.div>
+                      <span className="text-[10px] text-muted-foreground/50 whitespace-nowrap">Cancelar</span>
                     </motion.div>
                   )}
                 </div>
@@ -293,188 +306,154 @@ export function ChatPanel({
 
               {/* Right-side buttons */}
               <div className="flex items-center gap-1.5 shrink-0">
-                <AnimatePresence mode="popLayout">
-                  {isLocked ? (
-                    /* Locked: show trash (cancel) */
-                    <motion.div
-                      key="trash"
-                      initial={{ opacity: 0, scale: 0.7 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.7 }}
+
+                {/* Locked mode OR desktop click mode — Trash + Send */}
+                {showLockedButtons && (
+                  <>
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={() => { stopChatRecording({ cancel: true }); setIsLocked(false); setIsClickMode(false) }}
+                      className="h-8 w-8 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer"
+                      aria-label="Cancelar grabación"
                     >
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={() => {
-                          stopChatRecording({ cancel: true })
-                          setIsLocked(false)
-                          setIsClickMode(false)
-                        }}
-                        className="h-8 w-8 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer"
-                        aria-label="Cancelar grabación"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </motion.div>
-                  ) : !isChatRecording ? null : null}
-                </AnimatePresence>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={() => { stopChatRecording(); setIsLocked(false); setIsClickMode(false) }}
+                      className="h-8 w-8 rounded-lg bg-accent text-accent-foreground hover:bg-accent/90 cursor-pointer shadow-md"
+                      aria-label="Enviar audio"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                    </Button>
+                  </>
+                )}
 
-                {/* Mic button — hold-to-record on mobile, click-to-toggle on desktop */}
-                <div className="relative">
-                  {/* Lock indicator — rises and highlights with drag */}
-                  <AnimatePresence>
-                    {isChatRecording && !isClickMode && !isLocked && (
-                      <motion.div
-                        key="lock-ind"
-                        initial={{ opacity: 0, y: 0, scale: 0.6 }}
-                        animate={{
-                          opacity: 0.35 + lockProgress * 0.65,
-                          y: -(28 + dragY * 0.65),
-                          scale: 0.8 + lockProgress * 0.2,
-                        }}
-                        exit={{ opacity: 0, scale: 0.4, y: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                        className="absolute bottom-full left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none mb-0.5"
-                      >
-                        <div
-                          className="p-1 rounded-full transition-colors duration-75"
-                          style={{
-                            background: lockProgress > 0.6 ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.08)",
+                {/* Mic button — touch hold-to-record OR idle */}
+                {showMicButton && (
+                  <div className="relative">
+                    {/* Lock/up indicator — mobile only, while recording unlocked */}
+                    <AnimatePresence>
+                      {isChatRecording && !isClickMode && !isLocked && (
+                        <motion.div
+                          key="lock-ind"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{
+                            opacity: 0.4 + lockProgress * 0.6,
+                            y: -(28 + dragY * 0.55),
                           }}
+                          exit={{ opacity: 0, scale: 0.5, y: 0 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                          className="absolute bottom-full left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none mb-0.5"
                         >
-                          <Lock
-                            className="w-3 h-3 transition-colors duration-75"
-                            style={{ color: lockProgress > 0.6 ? "rgb(52,211,153)" : "rgba(255,255,255,0.4)" }}
-                          />
-                        </div>
-                        <div
-                          className="w-px transition-all duration-75"
-                          style={{
-                            height: Math.max(2, 8 - lockProgress * 6),
-                            background: lockProgress > 0.6 ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.15)",
-                          }}
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                          {/* Lock icon */}
+                          <div
+                            className="p-1.5 rounded-full transition-all duration-75"
+                            style={{
+                              background: lockProgress > 0.65 ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.07)",
+                              border: `1px solid ${lockProgress > 0.65 ? "rgba(52,211,153,0.35)" : "rgba(255,255,255,0.12)"}`,
+                            }}
+                          >
+                            <Lock
+                              className="w-3 h-3 transition-colors duration-75"
+                              style={{ color: lockProgress > 0.65 ? "rgb(52,211,153)" : "rgba(255,255,255,0.4)" }}
+                            />
+                          </div>
+                          {/* Upward pulsing chevrons — bottom animates first (upward wave) */}
+                          {([0.35, 0.2, 0.05] as const).map((delay, i) => (
+                            <motion.div
+                              key={i}
+                              animate={{ opacity: [0.15, 0.6, 0.15] }}
+                              transition={{ repeat: Infinity, duration: 0.9, delay }}
+                              style={{ marginTop: i === 0 ? 2 : -3 }}
+                            >
+                              <ChevronUp
+                                className="w-3 h-3 transition-colors duration-75"
+                                style={{ color: lockProgress > 0.65 ? "rgba(52,211,153,0.55)" : "rgba(255,255,255,0.22)" }}
+                              />
+                            </motion.div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                  <Button
-                    type="button"
-                    size="icon"
-                    disabled={isChatProcessing}
-                    /* Desktop: click to toggle */
-                    onPointerDown={(e) => {
-                      e.preventDefault()
-                      if (e.pointerType === "mouse") {
-                        setIsClickMode(true)
-                        if (isChatRecording) {
-                          stopChatRecording()
-                          setIsLocked(false)
-                        } else {
+                    <Button
+                      type="button"
+                      size="icon"
+                      disabled={isChatProcessing}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        if (e.pointerType === "mouse") {
+                          // Desktop: click once to start, then use Trash/Send buttons
+                          setIsClickMode(true)
                           startChatRecording()
+                          return
                         }
-                        return
-                      }
-                      // Touch: hold-to-record
-                      setIsClickMode(false)
-                      if (isLocked) {
-                        stopChatRecording()
-                        setIsLocked(false)
-                      } else {
+                        // Touch: hold-to-record
+                        setIsClickMode(false)
                         startChatRecording()
-                        setIsLocked(false)
-                        setDragX(0)
-                        setDragY(0)
+                        setDragX(0); setDragY(0)
                         touchStartX.current = e.clientX
                         touchStartY.current = e.clientY
                         e.currentTarget.setPointerCapture(e.pointerId)
-                      }
-                    }}
-                    onPointerMove={(e) => {
-                      if (e.pointerType === "mouse") return
-                      if (!isChatRecording || isLocked || touchStartX.current === null || touchStartY.current === null) return
-
-                      const deltaX = touchStartX.current - e.clientX
-                      const deltaY = touchStartY.current - e.clientY
-                      setDragX(Math.max(0, deltaX))
-                      setDragY(Math.max(0, deltaY))
-
-                      if (deltaY > 100) {
-                        setIsLocked(true)
-                        setDragX(0)
-                        setDragY(0)
-                        touchStartX.current = null
-                        touchStartY.current = null
-                      } else if (deltaX > 100) {
-                        stopChatRecording({ cancel: true })
-                        setIsLocked(false)
-                        setDragX(0)
-                        setDragY(0)
-                        touchStartX.current = null
-                        touchStartY.current = null
-                      }
-                    }}
-                    onPointerUp={(e) => {
-                      if (e.pointerType !== "mouse") {
-                        e.currentTarget.releasePointerCapture(e.pointerId)
-                        if (!isLocked) {
-                          stopChatRecording()
+                      }}
+                      onPointerMove={(e) => {
+                        if (e.pointerType === "mouse") return
+                        if (!isChatRecording || isLocked || touchStartX.current === null || touchStartY.current === null) return
+                        const deltaX = touchStartX.current - e.clientX
+                        const deltaY = touchStartY.current - e.clientY
+                        setDragX(Math.max(0, deltaX))
+                        setDragY(Math.max(0, deltaY))
+                        if (deltaY > 100) {
+                          setIsLocked(true); setDragX(0); setDragY(0)
+                          touchStartX.current = null; touchStartY.current = null
+                        } else if (deltaX > 100) {
+                          stopChatRecording({ cancel: true }); setIsLocked(false)
+                          setDragX(0); setDragY(0)
+                          touchStartX.current = null; touchStartY.current = null
                         }
-                        setDragX(0)
-                        setDragY(0)
-                        touchStartX.current = null
-                        touchStartY.current = null
-                      }
-                    }}
-                    onPointerLeave={(e) => {
-                      if (e.pointerType !== "mouse" && isChatRecording && !isLocked) {
-                        stopChatRecording({ cancel: true })
-                      }
-                      setDragX(0)
-                      setDragY(0)
-                    }}
-                    onPointerCancel={(e) => {
-                      if (e.pointerType !== "mouse") {
-                        if (!isLocked) stopChatRecording({ cancel: true })
-                        setDragX(0)
-                        setDragY(0)
-                        touchStartX.current = null
-                        touchStartY.current = null
-                      }
-                    }}
-                    style={{
-                      transform: isChatRecording && !isLocked
-                        ? dragY > 0
-                          ? `translateY(-${dragY}px)`
-                          : dragX > 0
-                            ? `translateX(-${dragX}px)`
-                            : "none"
-                        : "none",
-                      transition: dragX === 0 && dragY === 0 ? "transform 0.2s ease" : "none",
-                    }}
-                    className={`shrink-0 rounded-lg h-8 w-8 cursor-pointer disabled:opacity-50 select-none touch-none transition-colors ${isChatRecording
-                      ? isLocked
-                        ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-md"
-                        : "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_14px_rgba(239,68,68,0.5)]"
-                      : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                      }}
+                      onPointerUp={(e) => {
+                        if (e.pointerType !== "mouse") {
+                          e.currentTarget.releasePointerCapture(e.pointerId)
+                          if (!isLocked) stopChatRecording()
+                          setDragX(0); setDragY(0)
+                          touchStartX.current = null; touchStartY.current = null
+                        }
+                      }}
+                      onPointerLeave={(e) => {
+                        if (e.pointerType !== "mouse" && isChatRecording && !isLocked) stopChatRecording({ cancel: true })
+                        setDragX(0); setDragY(0)
+                      }}
+                      onPointerCancel={(e) => {
+                        if (e.pointerType !== "mouse") {
+                          if (!isLocked) stopChatRecording({ cancel: true })
+                          setDragX(0); setDragY(0)
+                          touchStartX.current = null; touchStartY.current = null
+                        }
+                      }}
+                      style={{
+                        transform: isChatRecording && !isLocked
+                          ? dragY > 0 ? `translateY(-${dragY}px)` : dragX > 0 ? `translateX(-${dragX}px)` : "none"
+                          : "none",
+                        transition: dragX === 0 && dragY === 0 ? "transform 0.2s ease" : "none",
+                      }}
+                      className={`shrink-0 rounded-lg h-8 w-8 cursor-pointer disabled:opacity-50 select-none touch-none transition-colors ${
+                        isChatRecording
+                          ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_14px_rgba(239,68,68,0.5)]"
+                          : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
                       }`}
-                    aria-label={
-                      isChatRecording
-                        ? isLocked ? "Enviar grabación" : "Soltar para enviar"
-                        : "Mantener para grabar"
-                    }
-                  >
-                    {isChatRecording && isLocked
-                      ? <Send className="w-3.5 h-3.5" />
-                      : isChatRecording
-                        ? <Mic className="w-3.5 h-3.5 animate-pulse" />
-                        : <Mic className="w-3.5 h-3.5" />
-                    }
-                  </Button>
-                </div>
+                      aria-label={isChatRecording ? "Soltar para enviar" : "Mantener para grabar"}
+                    >
+                      <Mic className={`w-3.5 h-3.5 ${isChatRecording ? "animate-pulse" : ""}`} />
+                    </Button>
+                  </div>
+                )}
 
-                {/* Send text button — hidden while recording */}
-                {!isChatRecording && (
+                {/* Send button — shown when has text or processing (and not recording) */}
+                {showSendButton && (
                   <Button
                     type="submit"
                     size="icon"
