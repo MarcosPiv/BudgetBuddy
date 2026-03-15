@@ -1,4 +1,4 @@
-const CACHE = 'budgetbuddy-v3'
+const CACHE = 'budgetbuddy-v4'
 
 // App shell to pre-cache
 const SHELL = ['/', '/manifest.json', '/icon.svg', '/icon-maskable.svg']
@@ -71,7 +71,8 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then((cached) => {
         if (cached) return cached
         return fetch(event.request).then((res) => {
-          caches.open(CACHE).then((c) => c.put(event.request, res.clone()))
+          const resClone = res.clone()
+          caches.open(CACHE).then((c) => c.put(event.request, resClone))
           return res
         })
       })
