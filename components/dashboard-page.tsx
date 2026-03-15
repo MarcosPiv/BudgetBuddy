@@ -96,6 +96,9 @@ export function DashboardPage() {
   const chatAudioChunksRef = useRef<Blob[]>([])
   const chatAudioHoldRef = useRef(false)
   const chatAudioOptsRef = useRef<{ cancel?: boolean }>({})
+  // Refs so onstop always reads fresh values regardless of closure staleness
+  const chatMessagesRef = useRef(chatMessages)
+  const dispatchChatRef = useRef<((label: string, prev: ChatMessage[], att?: AIAttachment) => Promise<void>) | null>(null)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -291,6 +294,9 @@ export function DashboardPage() {
   ]
 
   const initials = userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "U"
+
+  // Keep refs in sync so onstop callbacks always read fresh values
+  useEffect(() => { chatMessagesRef.current = chatMessages }, [chatMessages])
 
   // ── Effects ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -776,26 +782,7 @@ export function DashboardPage() {
 
     try {
       const reply = await callAIChat(aiProvider, apiKey, buildFinancialContext(), history, audioAttachment)
-
-      // #9 — Parse navigation action marker from AI response
-      const actionMatch = reply.match(/\[\[ACTION:(\{[^}]+\})\]\]/)
-      const displayText = actionMatch
-        ? reply.replace(/\s*\[\[ACTION:\{[^}]+\}\]\]/, "").trim()
-        : reply
-
-      setChatMessages(prev => [...prev, { role: "bot", text: displayText }])
-
-      if (actionMatch) {
-        try {
-          const action = JSON.parse(actionMatch[1]) as { type: string; value?: string }
-          setTimeout(() => {
-            if (action.type === "set_filter" && ["week", "month", "year"].includes(action.value ?? "")) {
-              setTimeFilter(action.value as TimeFilter)
-            }
-            setChatOpen(false)
-          }, 900)
-        } catch { /* ignore malformed action JSON */ }
-      }
+      setChatMessages(prev => [...prev, { role: "bot", text: reply }])
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al conectar."
       setChatMessages(prev => [...prev, { role: "bot", text: msg }])
@@ -803,6 +790,8 @@ export function DashboardPage() {
       setIsChatProcessing(false)
     }
   }
+  // Always point to the latest dispatchChatMessage
+  dispatchChatRef.current = dispatchChatMessage
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -843,13 +832,23 @@ export function DashboardPage() {
           return
         }
         chatAudioOptsRef.current = {}
-        const blob = new Blob(chatAudioChunksRef.current, { type: "audio/webm" })
-        const file = new File([blob], `chat-voz-${Date.now()}.webm`, { type: "audio/webm" })
-        const base64 = await fileToBase64(file)
-        const attachment: AIAttachment = { type: "audio", base64, mimeType: "audio/webm", file }
-        const prevMessages = chatMessages
-        setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
-        await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
+        try {
+          const blob = new Blob(chatAudioChunksRef.current, { type: "audio/webm" })
+          if (blob.size === 0) {
+            setChatMessages(prev => [...prev, { role: "bot", text: "No se capturó audio. Intentá mantener el botón mientras hablás." }])
+            return
+          }
+          const file = new File([blob], `chat-voz-${Date.now()}.webm`, { type: "audio/webm" })
+          const base64 = await fileToBase64(file)
+          const attachment: AIAttachment = { type: "audio", base64, mimeType: "audio/webm", file }
+          // Use refs so we always read fresh chatMessages + dispatchChatMessage
+          const prevMessages = chatMessagesRef.current
+          setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
+          await dispatchChatRef.current?.("🎤 Mensaje de voz", prevMessages, attachment)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Error al procesar el audio."
+          setChatMessages(prev => [...prev, { role: "bot", text: msg }])
+        }
       }
       recorder.start()
       setIsChatRecording(true)

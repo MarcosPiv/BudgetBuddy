@@ -160,12 +160,7 @@ Reglas de respuesta:
 - "¿cuánto gasté hoy?" → usás "Gasto de hoy" del contexto
 - Sé conciso: máximo 3-4 oraciones. Si la pregunta no es de finanzas, redirigilo amablemente.
 
-Comandos de navegación — cuando el usuario quiera ver sus datos filtrados o registrar algo, añadí al FINAL de tu respuesta (sin texto extra después) un marcador de acción:
-- Ver datos de esta semana → [[ACTION:{"type":"set_filter","value":"week"}]]
-- Ver datos de este mes → [[ACTION:{"type":"set_filter","value":"month"}]]
-- Ver datos de este año → [[ACTION:{"type":"set_filter","value":"year"}]]
-- Agregar/registrar un gasto o ingreso → [[ACTION:{"type":"focus_input"}]]
-Solo incluí el marcador si el comando es claro e inequívoco. En caso de duda, no lo pongas.`
+`
 }
 
 function buildUserMessage(input: string): string {
