@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
-import { callAI, callAIChat, type ChatTurn, type AIAttachment } from "@/lib/ai"
+import { callAI, callAIChat, sanitizeUserInput, type ChatTurn, type AIAttachment } from "@/lib/ai"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import type { DateRange } from "react-day-picker"
 
@@ -372,7 +372,8 @@ export function DashboardPage() {
     const curr = newCurrency
     const appliedRate = getAppliedRate()
     const rateType = curr === "USD" ? newExRateType : null
-    const txDate = newTxDate ?? new Date()
+    const userPickedDate = newTxDate        // null = user didn't explicitly pick a date
+    const txDate = userPickedDate ?? new Date()
 
     setMagicInput("")
     setAttachments([])
@@ -416,19 +417,46 @@ export function DashboardPage() {
         }
       }
 
+      let usdAutoDetected = false
       for (const result of valid) {
+        // Date: user-picked date wins; otherwise use AI's daysAgo offset
+        let txDateForResult = txDate
+        if (!userPickedDate && typeof result.daysAgo === "number" && result.daysAgo > 0) {
+          const d = new Date()
+          d.setDate(d.getDate() - result.daysAgo)
+          d.setHours(12, 0, 0, 0) // noon to avoid timezone edge cases
+          txDateForResult = d
+        }
+
+        // Currency: user-set wins; otherwise use AI's detected currency
+        let currForResult = curr
+        let rateForResult = appliedRate
+        let rateTypeForResult = rateType
+        if (curr === "ARS" && result.suggestedCurrency === "USD") {
+          currForResult = "USD"
+          rateForResult = (liveRates.blue as { venta?: number } | null)?.venta ?? usdRate
+          rateTypeForResult = "BLUE"
+          if (!usdAutoDetected) {
+            toast("💵 Moneda detectada: USD", {
+              description: `Tasa Blue aplicada · $${rateForResult.toLocaleString("es-AR")}`,
+            })
+            usdAutoDetected = true
+          }
+        }
+
         addTransaction({
           description: result.description,
           amount: result.amount,
           type: result.type as "expense" | "income",
           icon: result.icon,
           category: result.category,
-          date: txDate,
-          currency: curr,
-          amountUsd: curr === "USD" ? result.amount : undefined,
-          txRate: curr === "USD" ? appliedRate : undefined,
-          exchangeRateType: rateType,
+          date: txDateForResult,
+          currency: currForResult,
+          amountUsd: currForResult === "USD" ? result.amount : undefined,
+          txRate: currForResult === "USD" ? rateForResult : undefined,
+          exchangeRateType: rateTypeForResult,
           observation: obs,
+          isRecurring: result.suggestRecurring === true,
           receiptUrl: valid.length === 1 ? receiptUrl : undefined,
         }, (msg) => {
           setAiError(msg)
@@ -581,6 +609,7 @@ export function DashboardPage() {
     const now = new Date()
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth()
+    const todayStr = now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
 
     const yearTxs = transactions.filter(t => new Date(t.date).getFullYear() === currentYear)
     const monthTxs = transactions.filter(t => {
@@ -614,6 +643,7 @@ export function DashboardPage() {
       .join("\n")
 
     return [
+      `Hoy es ${todayStr}.`,
       `=== RESUMEN ANUAL ${currentYear} ===`,
       `Ingresos año: ${formatCurrency(sumIncome(yearTxs))}`,
       `Gastos año: ${formatCurrency(sumExpenses(yearTxs))}`,
@@ -658,7 +688,15 @@ export function DashboardPage() {
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!chatInput.trim() || isChatProcessing || isChatRecording) return
-    const userMsg = chatInput.trim()
+    let userMsg: string
+    try {
+      userMsg = sanitizeUserInput(chatInput.trim())
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Entrada inválida."
+      setChatMessages(prev => [...prev, { role: "bot", text: msg }])
+      setChatInput("")
+      return
+    }
     setChatInput("")
     const prevMessages = chatMessages
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }])

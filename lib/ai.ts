@@ -6,6 +6,9 @@ export interface ParsedTransaction {
   amount: number
   category: string
   icon: string
+  daysAgo?: number        // 0 = today, 1 = yesterday, N = N days ago (0–365)
+  suggestRecurring?: boolean
+  suggestedCurrency?: "USD" // only present when AI explicitly detects USD in the text
 }
 
 export interface ChatTurn {
@@ -20,32 +23,67 @@ export interface AIAttachment {
   file?: File // required for OpenAI Whisper audio transcription
 }
 
+// ── Prompt injection protection ───────────────────────────────────────────────
+
+const INJECTION_PATTERNS = [
+  /ignore\s+(previous|all|prior|las?\s+instrucciones)/i,
+  /you\s+are\s+(now|a\b)/i,
+  /\bsystem\s*:/i,
+  /instrucciones\s+anteriores/i,
+  /olvidá?\s+(todo|instrucciones)/i,
+  /<\s*\/?\s*system\s*>/i,
+  /\[INST\]/i,
+  /###\s*instruc/i,
+  /\bnew\s+persona\b/i,
+  /\bjailbreak\b/i,
+  /pretend\s+(you|that)/i,
+  /act\s+as\s+(if\b|a\b)/i,
+  /forget\s+(previous|all|prior)/i,
+  /disregard\s+(previous|all|prior|your)/i,
+  /from\s+now\s+on\s+(you|ignore|act)/i,
+]
+
+/** Strips injection attempts and enforces max length. Throws on detected attack. */
+export function sanitizeUserInput(text: string): string {
+  const trimmed = text.trim().slice(0, 300)
+  for (const p of INJECTION_PATTERNS) {
+    if (p.test(trimmed)) {
+      throw new Error("Entrada inválida. Describí el gasto de forma simple, por ejemplo: 'Gasté 5000 en el super'.")
+    }
+  }
+  return trimmed
+}
+
+// ── Validation constants ──────────────────────────────────────────────────────
+
 const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft"]
 const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
+
+// ── System prompts ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. Tu única tarea es analizar texto, imágenes o audio en lenguaje natural y extraer transacciones financieras.
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown, sin backticks.
 
 Si hay UNA sola transacción:
-{"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"ShoppingCart"}
+{"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false}
 
 Si el mensaje menciona MÚLTIPLES transacciones, devolvé un array JSON (una por item):
-[{"type":"expense","description":"...","amount":número,"category":"...","icon":"..."},{"type":"expense","description":"...","amount":número,"category":"...","icon":"..."}]
+[{"type":"expense","description":"...","amount":número,"category":"...","icon":"...","daysAgo":0,"suggestRecurring":false},{"type":"expense","description":"...","amount":número,"category":"...","icon":"...","daysAgo":0,"suggestRecurring":false}]
 
 Para ingresos usar type:"income".
 
 Si el contenido NO describe ninguna transacción financiera respondé exactamente:
 {"type":"unknown"}
 
-Reglas:
+Reglas generales:
 - amount siempre es un número positivo (sin signos)
 - description: primera letra en mayúscula, máx 35 chars
 - Si hay imagen de ticket o factura: extraé el monto total y el tipo de establecimiento
 - Si hay audio: transcribí y analizá el contenido
 - type "income" = cobro, ingreso, salario, venta, me pagaron, transferencia recibida
 - type "expense" = gasto, compra, pago, transferencia enviada, gasté
-- Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") aplicalo como contexto de categoría para todos los items de ese mensaje
+- Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") aplicalo como contexto de categoría
 - category y icon según el tema:
   * Comida/supermercado/delivery → "Comida", "ShoppingCart"
   * Transporte/nafta/peaje/uber/taxi/colectivo → "Transporte", "Car"
@@ -56,7 +94,26 @@ Reglas:
   * Librería/papelería/útiles/ropa/shopping/electrodoméstico → "General", "ShoppingCart"
   * Si no entra en ninguna → "General", "ShoppingCart"
 - Para ingresos preferir icon "ArrowDownLeft"
-- Si dicen "hola", preguntas o texto sin transacción → {"type":"unknown"}`
+- Si dicen "hola", preguntas o texto sin transacción → {"type":"unknown"}
+
+Campo daysAgo (entero ≥ 0, SIEMPRE incluir en la respuesta):
+- 0 = hoy (valor por defecto cuando no se menciona fecha)
+- 1 = "ayer"
+- 2 = "anteayer" o "hace 2 días"
+- N = "hace N días"
+- Para día de semana (ej: "el lunes", "el martes pasado"): calculá los días hasta la fecha de hoy provista en el mensaje
+- "la semana pasada" → 7
+- "el mes pasado" → 30
+- Para fechas exactas (ej: "el 5 de marzo", "3/3"): calculá los días usando la fecha de hoy del mensaje
+- Máximo 365. Si no se menciona fecha → 0.
+
+Campo suggestRecurring (boolean, SIEMPRE incluir):
+- true: alquiler, sueldo, cuota, préstamo, gym, streaming, Netflix, Spotify, suscripción mensual/anual, luz, gas, internet, agua
+- false: cualquier otro caso
+
+Campo suggestedCurrency (incluir SOLO si se detecta explícitamente USD):
+- Incluir "USD" SOLO si el texto menciona: dólares, dolares, USD, usd, verdes, dls, us$, u$s, dollar, dollars
+- Omitir completamente el campo si el pago es en pesos argentinos`
 
 function buildChatSystemPrompt(context: string): string {
   return `Sos BudgetBuddy AI, un asistente financiero personal para Argentina. Hablás en español rioplatense informal (vos, che).
@@ -73,9 +130,11 @@ Instrucciones:
 }
 
 function buildUserMessage(input: string): string {
+  // Include today's date so the AI can accurately compute daysAgo for relative dates
+  const today = new Date().toISOString().split("T")[0] // "YYYY-MM-DD"
   return input.trim()
-    ? `Texto: "${input}"`
-    : "Analizá el contenido adjunto y extraé la transacción financiera si existe."
+    ? `Hoy es ${today}.\nTexto del usuario: """${input}"""`
+    : `Hoy es ${today}.\nAnalizá el contenido adjunto y extraé la transacción financiera si existe.`
 }
 
 function capitalize(s: string): string {
@@ -90,6 +149,17 @@ function validateOne(raw: ParsedTransaction): ParsedTransaction {
   if (!VALID_CATEGORIES.includes(raw.category)) raw.category = "General"
   if (!raw.description?.trim()) raw.description = "Transacción"
   raw.description = capitalize(raw.description.slice(0, 40))
+  // daysAgo: must be a non-negative integer ≤ 365, default 0
+  raw.daysAgo = (
+    typeof raw.daysAgo === "number" &&
+    Number.isInteger(raw.daysAgo) &&
+    raw.daysAgo >= 0 &&
+    raw.daysAgo <= 365
+  ) ? raw.daysAgo : 0
+  // suggestRecurring: must be boolean
+  raw.suggestRecurring = raw.suggestRecurring === true
+  // suggestedCurrency: only "USD" is accepted, otherwise remove the field
+  if (raw.suggestedCurrency !== "USD") delete raw.suggestedCurrency
   return raw
 }
 
@@ -365,7 +435,7 @@ async function callGemini(apiKey: string, input: string, attachments?: AIAttachm
   validateKeyFormat("gemini", apiKey)
   const parts: object[] = []
 
-  // Add all attachments (images + audio) as inline_data
+  // Add all attachments (images + audio + files) as inline_data
   for (const att of attachments ?? []) {
     parts.push({ inline_data: { mime_type: att.mimeType, data: att.base64 } })
   }
@@ -453,10 +523,12 @@ export async function callAI(
   input: string,
   attachments?: AIAttachment[]
 ): Promise<ParsedTransaction | ParsedTransaction[]> {
+  // Sanitize input — throws immediately on injection attempt
+  const safeInput = sanitizeUserInput(input)
   try {
-    if (provider === "claude") return await callClaude(apiKey, input, attachments)
-    if (provider === "openai") return await callOpenAI(apiKey, input, attachments)
-    return await callGemini(apiKey, input, attachments)
+    if (provider === "claude") return await callClaude(apiKey, safeInput, attachments)
+    if (provider === "openai") return await callOpenAI(apiKey, safeInput, attachments)
+    return await callGemini(apiKey, safeInput, attachments)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))
@@ -470,10 +542,16 @@ export async function callAIChat(
   history: ChatTurn[],
   audioAttachment?: AIAttachment
 ): Promise<string> {
+  // Defense-in-depth: sanitize the last user turn before sending
+  const safeHistory = history.map((turn, i) =>
+    i === history.length - 1 && turn.role === "user"
+      ? { ...turn, text: sanitizeUserInput(turn.text) }
+      : turn
+  )
   try {
-    if (provider === "claude") return await callClaudeChat(apiKey, context, history, audioAttachment)
-    if (provider === "openai") return await callOpenAIChat(apiKey, context, history, audioAttachment)
-    return await callGeminiChat(apiKey, context, history, audioAttachment)
+    if (provider === "claude") return await callClaudeChat(apiKey, context, safeHistory, audioAttachment)
+    if (provider === "openai") return await callOpenAIChat(apiKey, context, safeHistory, audioAttachment)
+    return await callGeminiChat(apiKey, context, safeHistory, audioAttachment)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))
