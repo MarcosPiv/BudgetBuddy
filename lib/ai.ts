@@ -6,9 +6,10 @@ export interface ParsedTransaction {
   amount: number
   category: string
   icon: string
-  daysAgo?: number        // 0 = today, 1 = yesterday, N = N days ago (0–365)
+  daysAgo?: number              // 0 = today, 1 = yesterday, N = N days ago (0–365)
   suggestRecurring?: boolean
-  suggestedCurrency?: "USD" // only present when AI explicitly detects USD in the text
+  suggestedCurrency?: "USD"     // only present when AI explicitly detects USD in the text
+  suggestedExRateType?: "BLUE" | "OFICIAL" | "TARJETA" | "MEP" // only present when rate type is explicitly mentioned
 }
 
 export interface ChatTurn {
@@ -113,7 +114,14 @@ Campo suggestRecurring (boolean, SIEMPRE incluir):
 
 Campo suggestedCurrency (incluir SOLO si se detecta explícitamente USD):
 - Incluir "USD" SOLO si el texto menciona: dólares, dolares, USD, usd, verdes, dls, us$, u$s, dollar, dollars
-- Omitir completamente el campo si el pago es en pesos argentinos`
+- Omitir completamente el campo si el pago es en pesos argentinos
+
+Campo suggestedExRateType (incluir SOLO si se menciona explícitamente el tipo de cambio junto con USD):
+- "BLUE": menciona "blue", "dólar blue", "blue dollar", "paralelo", "cueva"
+- "OFICIAL": menciona "oficial", "dólar oficial", "bco", "banco"
+- "TARJETA": menciona "tarjeta", "con tarjeta", "dólar tarjeta", "recargo"
+- "MEP": menciona "MEP", "dólar MEP", "bolsa", "contado con liqui", "CCL"
+- Omitir completamente si no se especifica el tipo (el sistema usará el configurado por el usuario)`
 
 function buildChatSystemPrompt(context: string): string {
   return `Sos BudgetBuddy AI, un asistente financiero personal para Argentina. Hablás en español rioplatense informal (vos, che).
@@ -160,6 +168,9 @@ function validateOne(raw: ParsedTransaction): ParsedTransaction {
   raw.suggestRecurring = raw.suggestRecurring === true
   // suggestedCurrency: only "USD" is accepted, otherwise remove the field
   if (raw.suggestedCurrency !== "USD") delete raw.suggestedCurrency
+  // suggestedExRateType: only known rate types accepted, otherwise remove
+  const VALID_RATE_TYPES = ["BLUE", "OFICIAL", "TARJETA", "MEP"]
+  if (!VALID_RATE_TYPES.includes(raw.suggestedExRateType as string)) delete raw.suggestedExRateType
   return raw
 }
 

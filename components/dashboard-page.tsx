@@ -66,7 +66,7 @@ export function DashboardPage() {
   const [observation, setObservation] = useState("")
   const [showObservation, setShowObservation] = useState(false)
   const [newCurrency, setNewCurrency] = useState<"ARS" | "USD">("ARS")
-  const [newExRateType, setNewExRateType] = useState<ExchangeRateType>("BLUE")
+  const [newExRateType, setNewExRateType] = useState<ExchangeRateType>("OFICIAL")
   const [newManualRate, setNewManualRate] = useState("")
   const [newTxDate, setNewTxDate] = useState<Date | null>(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -434,11 +434,15 @@ export function DashboardPage() {
         let rateTypeForResult = rateType
         if (curr === "ARS" && result.suggestedCurrency === "USD") {
           currForResult = "USD"
-          rateForResult = (liveRates.blue as { venta?: number } | null)?.venta ?? usdRate
-          rateTypeForResult = "BLUE"
+          // Priority: AI-detected rate type > user's selected rate type (default OFICIAL)
+          const resolvedRateType = result.suggestedExRateType ?? newExRateType
+          const liveKey = resolvedRateType.toLowerCase() as keyof typeof liveRates
+          rateForResult = (liveRates[liveKey] as { venta?: number } | null)?.venta ?? usdRate
+          rateTypeForResult = resolvedRateType as ExchangeRateType
           if (!usdAutoDetected) {
+            const rateLabels: Record<string, string> = { BLUE: "Blue", OFICIAL: "Oficial", TARJETA: "Tarjeta", MEP: "MEP" }
             toast("💵 Moneda detectada: USD", {
-              description: `Tasa Blue aplicada · $${rateForResult.toLocaleString("es-AR")}`,
+              description: `Tasa ${rateLabels[resolvedRateType] ?? resolvedRateType} aplicada · $${rateForResult.toLocaleString("es-AR")}`,
             })
             usdAutoDetected = true
           }
