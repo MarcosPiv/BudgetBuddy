@@ -301,6 +301,49 @@ export function DashboardPage() {
     return () => { streamRef.current?.getTracks().forEach((t) => t.stop()) }
   }, [])
 
+  // #8 — Proactive anomaly detection when chat opens
+  useEffect(() => {
+    if (!chatOpen || transactions.length === 0) return
+    const now = new Date()
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
+    const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(now.getDate() - 7)
+
+    const todayExp = transactions
+      .filter(t => t.type === "expense" && new Date(t.date) >= todayStart)
+      .reduce((a, t) => a + toArs(t), 0)
+    const last7Exp = transactions
+      .filter(t => { const d = new Date(t.date); return t.type === "expense" && d >= sevenDaysAgo && d < todayStart })
+      .reduce((a, t) => a + toArs(t), 0)
+    const dailyAvg = last7Exp / 7
+
+    let anomaly: string | null = null
+
+    if (dailyAvg > 500 && todayExp > dailyAvg * 2.5) {
+      const mult = (todayExp / dailyAvg).toFixed(1)
+      anomaly = `Che, hoy gastaste ${formatCurrency(todayExp)}, que es ${mult}x tu promedio diario de esta semana (${formatCurrency(dailyAvg)}). 👀`
+    } else if (isExpensesOnly && monthlyBudget > 0) {
+      const cYear = now.getFullYear(); const cMonth = now.getMonth()
+      const mTxs = transactions.filter(t => { const d = new Date(t.date); return d.getFullYear() === cYear && d.getMonth() === cMonth })
+      const mExp = mTxs.filter(t => t.type === "expense").reduce((a, t) => a + toArs(t), 0)
+      const daysInM = new Date(cYear, cMonth + 1, 0).getDate()
+      const dom = now.getDate()
+      if (dom >= 5) {
+        const proj = Math.round((mExp / dom) * daysInM)
+        const over = proj - monthlyBudget
+        if (over > 0) {
+          anomaly = `Al ritmo actual vas a gastar ${formatCurrency(proj)} este mes, superando tu presupuesto de ${formatCurrency(monthlyBudget)} por ${formatCurrency(over)}. 🚨`
+        }
+      }
+    }
+
+    if (!anomaly) return
+    setChatMessages(prev => {
+      if (prev.some(m => m.text === anomaly)) return prev
+      return [...prev, { role: "bot", text: anomaly! }]
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatOpen])
+
   // ── Magic Bar handlers ───────────────────────────────────────────────────────
   const getAppliedRate = (): number => {
     if (newCurrency === "ARS") return 1
@@ -646,6 +689,30 @@ export function DashboardPage() {
       })
       .join("\n")
 
+    // #6 — Rich stats for accurate AI answers
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const dayOfMonth = now.getDate()
+    const monthExp = sumExpenses(monthTxs)
+    const dailyAvgMonth = dayOfMonth > 0 ? monthExp / dayOfMonth : 0
+    const projectionEOM = Math.round(dailyAvgMonth * daysInMonth)
+
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
+    const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(now.getDate() - 7)
+    const todayExp = transactions
+      .filter(t => t.type === "expense" && new Date(t.date) >= todayStart)
+      .reduce((a, t) => a + toArs(t), 0)
+    const last7Exp = transactions
+      .filter(t => { const d = new Date(t.date); return t.type === "expense" && d >= sevenDaysAgo && d < todayStart })
+      .reduce((a, t) => a + toArs(t), 0)
+    const dailyAvg7 = last7Exp / 7
+
+    const top3Month = [...monthTxs]
+      .filter(t => t.type === "expense")
+      .sort((a, b) => toArs(b) - toArs(a))
+      .slice(0, 3)
+      .map(t => `${t.description}: ${formatCurrency(toArs(t))}`)
+      .join(", ")
+
     return [
       `Hoy es ${todayStr}.`,
       `=== RESUMEN ANUAL ${currentYear} ===`,
@@ -655,15 +722,24 @@ export function DashboardPage() {
       `Transacciones en el año: ${yearTxs.length}`,
       topCategories ? `Top categorías de gastos (año): ${topCategories}` : null,
       ``,
-      `=== MES ACTUAL ===`,
+      `=== MES ACTUAL (día ${dayOfMonth}/${daysInMonth}) ===`,
       `Ingresos mes: ${formatCurrency(sumIncome(monthTxs))}`,
-      `Gastos mes: ${formatCurrency(sumExpenses(monthTxs))}`,
+      `Gastos mes: ${formatCurrency(monthExp)}`,
       isExpensesOnly && monthlyBudget ? `Presupuesto mensual: ${formatCurrency(monthlyBudget)}` : null,
+      isExpensesOnly && monthlyBudget ? `Presupuesto restante: ${formatCurrency(monthlyBudget - monthExp)} (${Math.round((monthExp / monthlyBudget) * 100)}% usado)` : null,
+      `Proyección a fin de mes (ritmo actual): ${formatCurrency(projectionEOM)}`,
+      `Promedio diario últimos 7 días: ${formatCurrency(dailyAvg7)}`,
+      `Gasto de hoy: ${formatCurrency(todayExp)}`,
+      top3Month ? `Top 3 gastos más grandes del mes: ${top3Month}` : null,
       ``,
       `=== ÚLTIMAS ${recentTxs.length} TRANSACCIONES ===`,
       txLines,
     ].filter(v => v !== null).join("\n")
   }
+
+  // #7 — Rolling compression constants
+  const CHAT_HISTORY_MAX = 10
+  const CHAT_KEEP_RECENT = 6
 
   const dispatchChatMessage = async (userLabel: string, prevMessages: ChatMessage[], audioAttachment?: AIAttachment) => {
     if (!apiKey.trim()) {
@@ -671,16 +747,55 @@ export function DashboardPage() {
       return
     }
     setIsChatProcessing(true)
-    const history: ChatTurn[] = [
-      ...prevMessages.slice(1).map(m => ({
-        role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
-        text: m.text,
-      })),
-      { role: "user" as const, text: userLabel },
-    ]
+
+    // Build raw turns (skip the initial greeting at index 0)
+    const allTurns: ChatTurn[] = prevMessages.slice(1).map(m => ({
+      role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      text: m.text,
+    }))
+
+    // #7 — Compress older turns into a summary when history gets long
+    let history: ChatTurn[]
+    if (allTurns.length > CHAT_HISTORY_MAX) {
+      const older = allTurns.slice(0, allTurns.length - CHAT_KEEP_RECENT)
+      const recent = allTurns.slice(-CHAT_KEEP_RECENT)
+      const summaryText = older
+        .map(t => `${t.role === "user" ? "Usuario" : "Asistente"}: ${t.text.slice(0, 120)}`)
+        .join("\n")
+      history = [
+        { role: "assistant" as const, text: `[RESUMEN PREVIO DE CONVERSACIÓN]\n${summaryText}` },
+        ...recent,
+        { role: "user" as const, text: userLabel },
+      ]
+    } else {
+      history = [
+        ...allTurns,
+        { role: "user" as const, text: userLabel },
+      ]
+    }
+
     try {
       const reply = await callAIChat(aiProvider, apiKey, buildFinancialContext(), history, audioAttachment)
-      setChatMessages(prev => [...prev, { role: "bot", text: reply }])
+
+      // #9 — Parse navigation action marker from AI response
+      const actionMatch = reply.match(/\[\[ACTION:(\{[^}]+\})\]\]/)
+      const displayText = actionMatch
+        ? reply.replace(/\s*\[\[ACTION:\{[^}]+\}\]\]/, "").trim()
+        : reply
+
+      setChatMessages(prev => [...prev, { role: "bot", text: displayText }])
+
+      if (actionMatch) {
+        try {
+          const action = JSON.parse(actionMatch[1]) as { type: string; value?: string }
+          setTimeout(() => {
+            if (action.type === "set_filter" && ["week", "month", "year"].includes(action.value ?? "")) {
+              setTimeFilter(action.value as TimeFilter)
+            }
+            setChatOpen(false)
+          }, 900)
+        } catch { /* ignore malformed action JSON */ }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al conectar."
       setChatMessages(prev => [...prev, { role: "bot", text: msg }])
