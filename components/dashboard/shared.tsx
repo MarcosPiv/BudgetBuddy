@@ -35,7 +35,7 @@ export interface ChatMessage {
 }
 
 export interface Attachment {
-  type: "image" | "audio"
+  type: "image" | "audio" | "file"
   name: string
   url: string
   file: File

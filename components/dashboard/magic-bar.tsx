@@ -4,8 +4,8 @@ import { useRef, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
-  Mic, MicOff, Loader2, DollarSign, Trash2, Settings,
-  CalendarIcon, PenLine, Paperclip, Lock
+  Mic, Loader2, DollarSign, Trash2, Settings,
+  CalendarIcon, PenLine, Paperclip, Lock, FileText, ChevronLeft
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,32 +49,84 @@ interface MagicBarProps {
   handleMagicSubmit: (e: React.FormEvent) => void
   galleryInputRef: React.RefObject<HTMLInputElement>
   cameraInputRef: React.RefObject<HTMLInputElement>
+  fileInputRef: React.RefObject<HTMLInputElement>
   handleImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+  handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
   startCamera: () => void
   isRecording: boolean
   startRecording: () => void
   stopRecording: (opts?: { cancel?: boolean; autoSubmit?: boolean }) => void
   aiError: string | null
   onManualEntry: () => void
+  audioStream: MediaStream | null
 }
 
-const AudioWaveform = () => (
-  <div className="flex-1 flex items-center gap-[3px] h-5 overflow-hidden opacity-70 mask-image-linear-gradient w-full">
-    {Array.from({ length: 40 }).map((_, i) => {
-      const duration = 0.5 + Math.random() * 0.7;
-      const initialHeight = 20 + Math.random() * 30;
-      const targetHeight = 50 + Math.random() * 50;
-      return (
-        <motion.div
-          key={i}
-          animate={{ height: [`${initialHeight}%`, `${targetHeight}%`, `${initialHeight}%`] }}
-          transition={{ repeat: Infinity, duration, ease: "easeInOut" }}
-          className="w-[3px] bg-foreground/60 rounded-full shrink-0"
-        />
-      );
-    })}
-  </div>
-)
+// Canvas-based waveform — no React state updates during animation
+const AudioWaveform = ({ audioStream }: { audioStream: MediaStream | null }) => {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animRef = useRef<number>(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const wrap = wrapRef.current
+    if (!canvas || !wrap || !audioStream) return
+
+    // Sync canvas pixel dimensions to its rendered size
+    const w = Math.max(wrap.clientWidth || 0, 60)
+    const h = 24
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext("2d")!
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const analyser = audioCtx.createAnalyser()
+    analyser.fftSize = 128
+    analyser.smoothingTimeConstant = 0.65
+    audioCtx.createMediaStreamSource(audioStream).connect(analyser)
+
+    const bufLen = analyser.frequencyBinCount
+    const data = new Uint8Array(bufLen)
+    const BAR = 36
+    const gap = 2
+    const barW = Math.max(2, (w - (BAR - 1) * gap) / BAR)
+    const step = Math.max(1, Math.floor(bufLen / BAR))
+
+    const draw = () => {
+      analyser.getByteFrequencyData(data)
+      ctx.clearRect(0, 0, w, h)
+      for (let i = 0; i < BAR; i++) {
+        let sum = 0
+        for (let j = 0; j < step; j++) sum += data[i * step + j] || 0
+        const avg = sum / step
+        const pct = 0.07 + (avg / 255) * 0.93
+        const bh = Math.max(3, h * pct)
+        const x = i * (barW + gap)
+        const y = (h - bh) / 2
+        ctx.fillStyle = `rgba(52,211,153,${0.38 + (avg / 255) * 0.62})`
+        ctx.beginPath()
+        if (ctx.roundRect) ctx.roundRect(x, y, barW, bh, 1)
+        else ctx.rect(x, y, barW, bh)
+        ctx.fill()
+      }
+      animRef.current = requestAnimationFrame(draw)
+    }
+
+    draw()
+
+    return () => {
+      cancelAnimationFrame(animRef.current)
+      audioCtx.close().catch(() => {})
+    }
+  }, [audioStream])
+
+  return (
+    <div ref={wrapRef} className="flex-1 min-w-0 h-6">
+      <canvas ref={canvasRef} className="w-full h-full" />
+    </div>
+  )
+}
 
 export function MagicBar({
   chatOpen,
@@ -103,13 +155,16 @@ export function MagicBar({
   handleMagicSubmit,
   galleryInputRef,
   cameraInputRef,
+  fileInputRef,
   handleImageSelect,
+  handleFileSelect,
   startCamera,
   isRecording,
   startRecording,
   stopRecording,
   aiError,
   onManualEntry,
+  audioStream
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -146,6 +201,10 @@ export function MagicBar({
     ta.style.height = `${Math.min(ta.scrollHeight, 80)}px`
   }, [magicInput])
 
+  // Derived: progress toward each threshold (0–1)
+  const lockProgress = Math.min(dragY / 100, 1)
+  const cancelProgress = Math.min(dragX / 100, 1)
+
   return (
     <div
       className={`fixed bottom-0 left-0 z-40 bg-background/95 backdrop-blur-md border-t border-border transition-[right] duration-300 ease-out ${chatOpen ? "right-0 lg:right-80 xl:right-96" : "right-0"
@@ -157,6 +216,7 @@ export function MagicBar({
         {/* Hidden file inputs */}
         <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} multiple />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageSelect} />
+        <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" className="hidden" onChange={handleFileSelect} multiple />
 
         <div className="magic-border rounded-xl p-[1px]">
           <div className="bg-background rounded-[11px] px-4 py-3">
@@ -180,9 +240,13 @@ export function MagicBar({
                     >
                       {att.type === "image" ? (
                         <img src={att.url} alt={att.name} className="w-7 h-7 rounded object-cover" />
-                      ) : (
+                      ) : att.type === "audio" ? (
                         <div className="flex items-center justify-center w-7 h-7 rounded bg-accent/20">
                           <Mic className="w-3.5 h-3.5 text-accent" />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center w-7 h-7 rounded bg-primary/15">
+                          <FileText className="w-3.5 h-3.5 text-primary" />
                         </div>
                       )}
                       <span className="max-w-20 truncate">{att.name}</span>
@@ -317,6 +381,14 @@ export function MagicBar({
                     <Camera className="w-4 h-4 text-primary" />
                     <span>Ticket</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-primary" />
+                    <span>Archivo</span>
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -327,12 +399,28 @@ export function MagicBar({
               {/* Input row */}
               <div className="flex items-center gap-1.5 mb-2 relative">
                 {isRecording ? (
-                  <div className="flex-1 flex items-center min-w-0 pr-2">
-                    <div className="flex items-center gap-2 mr-3 shrink-0">
-                      <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
-                      <span className="font-mono text-sm">{formatTime(recordingTime)}</span>
+                  /* ── Recording row ── */
+                  <div className="flex-1 flex items-center min-w-0 gap-2">
+                    {/* Timer + pulse dot */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                      <span className="font-mono text-sm tabular-nums">{formatTime(recordingTime)}</span>
                     </div>
-                    <AudioWaveform />
+
+                    {/* Real-time waveform (canvas-based) */}
+                    <AudioWaveform audioStream={audioStream} />
+
+                    {/* Slide-to-cancel hint — fades as user drags left */}
+                    {!isClickMode && !isLocked && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: Math.max(0, 1 - cancelProgress * 1.2) }}
+                        className="flex items-center gap-0.5 shrink-0 text-muted-foreground/70 pointer-events-none"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                        <span className="text-[10px] font-medium tracking-wide whitespace-nowrap">Cancelar</span>
+                      </motion.div>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -356,25 +444,10 @@ export function MagicBar({
                   </>
                 )}
 
-                {/* Currency toggle has been moved below */}
-
-                {/* Attach / Cancel Slide text / Lock Trash */}
+                {/* Attach / Trash (locked mode) / Attach button */}
                 <div className="flex items-center shrink-0 min-w-8">
                   <AnimatePresence mode="popLayout">
-                    {isRecording && !isClickMode && !isLocked ? (
-                      <motion.div
-                        key="cancel-text"
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{
-                          opacity: dragX > 0 ? Math.max(0, 1 - (dragX / 80)) : 1,
-                          x: dragX > 0 ? -Math.min(dragX, 100) : 0
-                        }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="text-[11px] font-medium text-muted-foreground whitespace-nowrap overflow-hidden pointer-events-none pr-1 tracking-wider uppercase"
-                      >
-                        ◄ Desliza para cancelar
-                      </motion.div>
-                    ) : isLocked ? (
+                    {isLocked ? (
                       <motion.button
                         key="trash-btn"
                         initial={{ opacity: 0, scale: 0.8 }}
@@ -391,6 +464,9 @@ export function MagicBar({
                       >
                         <Trash2 className="w-4 h-4" />
                       </motion.button>
+                    ) : isRecording ? (
+                      /* Empty placeholder so layout doesn't shift */
+                      <motion.div key="recording-spacer" className="w-8" />
                     ) : (
                       <motion.button
                         key="attach-btn"
@@ -413,22 +489,51 @@ export function MagicBar({
 
                 {/* Action Buttons (Record or Send) */}
                 <div className="relative flex items-center shrink-0">
-                  {/* MOBILE VIEW: Single shared container for instant swap without layout shift */}
+                  {/* MOBILE: single slot that swaps between mic and send */}
                   <div className="flex md:hidden relative w-9 h-9 items-center justify-center">
                     {magicInput.trim().length === 0 ? (
-                      /* Audio — hold to record (Visible only when empty on mobile) */
                       <>
-                        {/* Lock Indicator Animation when not locked yet on touch */}
+                        {/* Lock indicator — rises and highlights as dragY increases */}
                         <AnimatePresence>
                           {isRecording && !isClickMode && !isLocked && (
                             <motion.div
-                              initial={{ opacity: 0, y: 0 }}
-                              animate={{ opacity: 1, y: -45 - (dragY * 0.5) }}
-                              exit={{ opacity: 0, scale: 0 }}
-                              className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none text-muted-foreground"
+                              key="lock-indicator"
+                              initial={{ opacity: 0, y: 0, scale: 0.6 }}
+                              animate={{
+                                opacity: 0.35 + lockProgress * 0.65,
+                                y: -(32 + dragY * 0.7),
+                                scale: 0.8 + lockProgress * 0.2,
+                              }}
+                              exit={{ opacity: 0, scale: 0.4, y: 0 }}
+                              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                              className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
                             >
-                              <Lock className="w-4 h-4 text-destructive/70 mb-1" />
-                              <span className="text-[9px] font-bold tracking-widest text-destructive/70 opacity-50">↑</span>
+                              <div
+                                className="p-1.5 rounded-full transition-colors duration-75"
+                                style={{
+                                  background: lockProgress > 0.6
+                                    ? "rgba(52,211,153,0.2)"
+                                    : "rgba(255,255,255,0.08)",
+                                }}
+                              >
+                                <Lock
+                                  className="w-3.5 h-3.5 transition-colors duration-75"
+                                  style={{
+                                    color: lockProgress > 0.6
+                                      ? "rgb(52,211,153)"
+                                      : "rgba(255,255,255,0.45)",
+                                  }}
+                                />
+                              </div>
+                              <div
+                                className="w-px mt-0.5 transition-all duration-75"
+                                style={{
+                                  height: Math.max(3, 10 - lockProgress * 7),
+                                  background: lockProgress > 0.6
+                                    ? "rgba(52,211,153,0.5)"
+                                    : "rgba(255,255,255,0.2)",
+                                }}
+                              />
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -447,7 +552,6 @@ export function MagicBar({
                                 startRecording();
                               }
                             } else {
-                              // Touch behavior
                               setIsClickMode(false);
                               if (isLocked) {
                                 stopRecording({ autoSubmit: true });
@@ -468,20 +572,17 @@ export function MagicBar({
                             if (!isRecording || isLocked || touchStartY.current === null || touchStartX.current === null) return;
 
                             const deltaY = touchStartY.current - e.clientY;
-                            const currentDrag = Math.max(0, deltaY);
-                            setDragY(currentDrag);
-
                             const deltaX = touchStartX.current - e.clientX;
-                            const currentDragX = Math.max(0, deltaX);
-                            setDragX(currentDragX);
+                            setDragY(Math.max(0, deltaY));
+                            setDragX(Math.max(0, deltaX));
 
-                            if (deltaY > 100) { // Slide up threshold 100px
+                            if (deltaY > 100) {
                               setIsLocked(true);
                               setDragY(0);
                               setDragX(0);
                               touchStartY.current = null;
                               touchStartX.current = null;
-                            } else if (deltaX > 100) { // Slide left threshold 100px
+                            } else if (deltaX > 100) {
                               stopRecording({ cancel: true });
                               setIsLocked(false);
                               setDragY(0);
@@ -494,8 +595,7 @@ export function MagicBar({
                             if (e.pointerType !== "mouse") {
                               e.currentTarget.releasePointerCapture(e.pointerId);
                               if (!isLocked) {
-                                if (dragX <= 100) stopRecording({ autoSubmit: true });
-                                else stopRecording({ cancel: true });
+                                stopRecording({ autoSubmit: true });
                               }
                               setDragY(0);
                               setDragX(0);
@@ -521,19 +621,31 @@ export function MagicBar({
                           }}
                           disabled={isProcessing}
                           style={{
-                            transform: dragY > 0 && !isLocked ? `translateY(-${dragY}px)` : dragX > 0 && !isLocked ? `translateX(-${dragX}px)` : 'none'
+                            transform: dragY > 0 && !isLocked
+                              ? `translateY(-${dragY}px)`
+                              : dragX > 0 && !isLocked
+                                ? `translateX(-${dragX}px)`
+                                : "none",
+                            transition: dragY === 0 && dragX === 0 ? "transform 0.2s ease" : "none",
                           }}
                           className={`absolute inset-0 w-full h-full transition-colors select-none touch-none cursor-pointer z-10 ${isRecording
-                            ? (isLocked ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md" : "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_15px_rgba(239,68,68,0.5)]")
+                            ? isLocked
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                              : "bg-destructive text-destructive-foreground hover:bg-destructive/90 scale-110 shadow-[0_0_18px_rgba(239,68,68,0.55)]"
                             : "bg-primary text-primary-foreground hover:bg-primary/90"
                             }`}
-                          aria-label={isRecording ? (isLocked ? "Enviar grabación" : "Detener o cancelar grabación") : "Grabar audio"}
+                          aria-label={isRecording ? (isLocked ? "Enviar grabación" : "Soltar para enviar") : "Mantener para grabar"}
                         >
-                          {isLocked ? <Send className="w-4 h-4 ml-0.5" /> : isRecording ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                          {isLocked
+                            ? <Send className="w-4 h-4 ml-0.5" />
+                            : isRecording
+                              ? <Mic className="w-4 h-4 animate-pulse" />
+                              : <Mic className="w-4 h-4" />
+                          }
                         </Button>
                       </>
                     ) : (
-                      /* Send Button (Visible only when text is entered on mobile) */
+                      /* Send button when text is entered */
                       <Button
                         type="submit"
                         size="icon"
@@ -550,9 +662,7 @@ export function MagicBar({
                     )}
                   </div>
 
-                  {/* DESKTOP VIEW: Both buttons always visible */}
-
-                  {/* Desktop Only Audio Recording Button */}
+                  {/* DESKTOP: both buttons always visible */}
                   <div className="hidden md:flex relative items-center shrink-0 mr-1.5">
                     <Button
                       type="button"
@@ -577,7 +687,6 @@ export function MagicBar({
                     </Button>
                   </div>
 
-                  {/* Desktop Only Send Button */}
                   <Button
                     type="submit"
                     size="icon"
@@ -593,8 +702,6 @@ export function MagicBar({
                   </Button>
                 </div>
               </div>
-
-
 
               {/* Extras: Fecha + Nota chips */}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
@@ -664,7 +771,6 @@ export function MagicBar({
                   <span>Nota</span>
                 </button>
 
-                {/* Character counter moved here */}
                 {magicInput.length > 0 && (
                   <div className="ml-auto flex items-center pr-1">
                     <span className={`text-[10px] tabular-nums font-medium ${magicInput.length >= 270 ? "text-destructive" : "text-muted-foreground/60"}`}>

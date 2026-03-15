@@ -14,7 +14,7 @@ export interface ChatTurn {
 }
 
 export interface AIAttachment {
-  type: "image" | "audio"
+  type: "image" | "audio" | "file"
   base64: string
   mimeType: string
   file?: File // required for OpenAI Whisper audio transcription
@@ -179,12 +179,14 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
   validateKeyFormat("claude", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
+  const files = attachments?.filter(a => a.type === "file") ?? []
 
   if (audios.length > 0) {
     throw new Error("Claude no soporta audio. Cambiá a Gemini o OpenAI en Ajustes para usar audio.")
   }
 
-  const userContent = images.length > 0
+  const hasMedia = images.length > 0 || files.length > 0
+  const userContent = hasMedia
     ? [
         ...images.map(img => ({
           type: "image" as const,
@@ -192,6 +194,14 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
             type: "base64" as const,
             media_type: (img.mimeType || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
             data: img.base64,
+          },
+        })),
+        ...files.filter(f => f.mimeType === "application/pdf").map(f => ({
+          type: "document" as const,
+          source: {
+            type: "base64" as const,
+            media_type: "application/pdf" as const,
+            data: f.base64,
           },
         })),
         { type: "text" as const, text: buildUserMessage(input) },
@@ -262,6 +272,7 @@ async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachm
   validateKeyFormat("openai", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
+  // files (PDFs, docs) are not directly supported by gpt-4o-mini vision; skipped
 
   // Transcribe audio with Whisper first
   let textInput = input

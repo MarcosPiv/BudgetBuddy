@@ -73,12 +73,14 @@ export function DashboardPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [aiError, setAiError] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const audioHoldRef = useRef(false) // tracks if pointer is still held during getUserMedia
   const audioOptsRef = useRef<{ cancel?: boolean; autoSubmit?: boolean }>({})
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Chat state ───────────────────────────────────────────────────────────────
   const [chatOpen, setChatOpen] = useState(false)
@@ -88,9 +90,12 @@ export function DashboardPage() {
   const [chatInput, setChatInput] = useState("")
   const [isChatProcessing, setIsChatProcessing] = useState(false)
   const [isChatRecording, setIsChatRecording] = useState(false)
+  const [chatAudioStream, setChatAudioStream] = useState<MediaStream | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chatAudioChunksRef = useRef<Blob[]>([])
+  const chatAudioHoldRef = useRef(false)
+  const chatAudioOptsRef = useRef<{ cancel?: boolean }>({})
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -380,7 +385,7 @@ export function DashboardPage() {
         capturedAttachments.map(async (a) => ({
           type: a.type,
           base64: await fileToBase64(a.file),
-          mimeType: a.file.type || (a.type === "audio" ? "audio/webm" : "image/jpeg"),
+          mimeType: a.file.type || (a.type === "audio" ? "audio/webm" : a.type === "file" ? "application/octet-stream" : "image/jpeg"),
           file: a.file,
         })),
       )
@@ -453,6 +458,22 @@ export function DashboardPage() {
     e.target.value = ""
   }
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    const next: Attachment[] = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      if (file.type.startsWith("image/")) {
+        next.push({ type: "image", name: file.name, url: URL.createObjectURL(file), file })
+      } else {
+        next.push({ type: "file", name: file.name, url: URL.createObjectURL(file), file })
+      }
+    }
+    setAttachments((prev) => [...prev, ...next])
+    e.target.value = ""
+  }
+
   const startRecording = async () => {
     audioHoldRef.current = true
     try {
@@ -462,6 +483,7 @@ export function DashboardPage() {
         stream.getTracks().forEach((t) => t.stop())
         return
       }
+      setAudioStream(stream)
       const mediaRecorder = new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
@@ -504,6 +526,7 @@ export function DashboardPage() {
     audioOptsRef.current = opts || {}
     mediaRecorderRef.current?.stop()
     setIsRecording(false)
+    setAudioStream(null)
   }
 
   const removeAttachment = (i: number) => {
@@ -643,14 +666,26 @@ export function DashboardPage() {
   }
 
   const startChatRecording = async () => {
+    chatAudioHoldRef.current = true
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // User released before permission resolved — abort cleanly
+      if (!chatAudioHoldRef.current) {
+        stream.getTracks().forEach(t => t.stop())
+        return
+      }
+      setChatAudioStream(stream)
       const recorder = new MediaRecorder(stream)
       chatMediaRecorderRef.current = recorder
       chatAudioChunksRef.current = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chatAudioChunksRef.current.push(e.data) }
       recorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop())
+        if (chatAudioOptsRef.current.cancel) {
+          chatAudioOptsRef.current = {}
+          return
+        }
+        chatAudioOptsRef.current = {}
         const blob = new Blob(chatAudioChunksRef.current, { type: "audio/webm" })
         const file = new File([blob], `chat-voz-${Date.now()}.webm`, { type: "audio/webm" })
         const base64 = await fileToBase64(file)
@@ -662,13 +697,17 @@ export function DashboardPage() {
       recorder.start()
       setIsChatRecording(true)
     } catch {
+      chatAudioHoldRef.current = false
       setChatMessages(prev => [...prev, { role: "bot", text: "No se pudo acceder al micrófono." }])
     }
   }
 
-  const stopChatRecording = () => {
+  const stopChatRecording = (opts?: { cancel?: boolean }) => {
+    chatAudioHoldRef.current = false
+    chatAudioOptsRef.current = opts || {}
     chatMediaRecorderRef.current?.stop()
     setIsChatRecording(false)
+    setChatAudioStream(null)
   }
 
   // ── Edit handlers ────────────────────────────────────────────────────────────
@@ -958,6 +997,7 @@ export function DashboardPage() {
             setChatInput={setChatInput}
             isChatProcessing={isChatProcessing}
             isChatRecording={isChatRecording}
+            chatAudioStream={chatAudioStream}
             chatEndRef={chatEndRef}
             handleChatSubmit={handleChatSubmit}
             startChatRecording={startChatRecording}
@@ -992,9 +1032,12 @@ export function DashboardPage() {
           handleMagicSubmit={handleMagicSubmit}
           galleryInputRef={galleryInputRef}
           cameraInputRef={cameraInputRef}
+          fileInputRef={fileInputRef}
           handleImageSelect={handleImageSelect}
+          handleFileSelect={handleFileSelect}
           startCamera={startCamera}
           isRecording={isRecording}
+          audioStream={audioStream}
           startRecording={startRecording}
           stopRecording={stopRecording}
           aiError={aiError}
