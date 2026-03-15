@@ -523,15 +523,25 @@ export function DashboardPage() {
     }
   }
 
+  const MAX_FILE_SIZE = 8 * 1024 * 1024 // 8 MB
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]
+  const ALLOWED_FILE_TYPES = ["application/pdf", "text/plain", "text/csv", "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/zip"]
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
     const next: Attachment[] = []
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      if (file.type.startsWith("image/")) {
-        next.push({ type: "image", name: file.name, url: URL.createObjectURL(file), file })
+      if (file.size > MAX_FILE_SIZE) {
+        setAiError(`"${file.name}" supera el límite de 8 MB.`); setTimeout(() => setAiError(null), 4000); continue
       }
+      // Accept image/* broadly (covers HEIC from iOS) but reject known non-image types
+      if (!file.type.startsWith("image/") && !ALLOWED_IMAGE_TYPES.includes(file.type)) continue
+      next.push({ type: "image", name: file.name, url: URL.createObjectURL(file), file })
     }
     setAttachments((prev) => [...prev, ...next])
     e.target.value = ""
@@ -543,11 +553,15 @@ export function DashboardPage() {
     const next: Attachment[] = []
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
+      if (file.size > MAX_FILE_SIZE) {
+        setAiError(`"${file.name}" supera el límite de 8 MB.`); setTimeout(() => setAiError(null), 4000); continue
+      }
       if (file.type.startsWith("image/")) {
         next.push({ type: "image", name: file.name, url: URL.createObjectURL(file), file })
-      } else {
+      } else if (ALLOWED_FILE_TYPES.includes(file.type)) {
         next.push({ type: "file", name: file.name, url: URL.createObjectURL(file), file })
       }
+      // silently skip unknown types — the input[accept] already filters the picker
     }
     setAttachments((prev) => [...prev, ...next])
     e.target.value = ""
@@ -580,6 +594,8 @@ export function DashboardPage() {
         if (wasCancelled) return
 
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+        if (blob.size < 500) return  // too short / empty recording, discard silently
+
         const file = new File([blob], `voz-${Date.now()}.webm`, { type: "audio/webm" })
         const newAtt: Attachment = { type: "audio", name: file.name, url: URL.createObjectURL(blob), file }
 
