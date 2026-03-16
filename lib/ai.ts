@@ -346,6 +346,48 @@ async function transcribeWithWhisper(apiKey: string, file: File): Promise<string
   return data.text?.trim() || ""
 }
 
+/** Pure audio-to-text transcription — bypasses the financial system prompt entirely. */
+export async function transcribeAudioAttachment(
+  provider: AIProvider,
+  apiKey: string,
+  attachment: AIAttachment
+): Promise<string | null> {
+  try {
+    if (provider === "claude") {
+      // Claude browser API doesn't support audio — return null so caller falls back
+      return null
+    }
+    if (provider === "openai") {
+      validateKeyFormat("openai", apiKey)
+      if (!attachment.file) return null
+      const text = await transcribeWithWhisper(apiKey, attachment.file)
+      return text || null
+    }
+    // Gemini — direct call with minimal transcription system prompt, no financial context
+    validateKeyFormat("gemini", apiKey)
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: "Transcribí el audio a texto en español rioplatense. Devolvé ÚNICAMENTE el texto hablado, sin formateo ni texto adicional." }] },
+          contents: [{ parts: [
+            { inline_data: { mime_type: attachment.mimeType, data: attachment.base64 } },
+            { text: "Transcribí este audio." },
+          ]}],
+          generationConfig: { maxOutputTokens: 200, temperature: 0 },
+        }),
+      }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null
+  } catch {
+    return null
+  }
+}
+
 // ── Claude (Anthropic) ────────────────────────────────────────────────────────
 async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("claude", apiKey)

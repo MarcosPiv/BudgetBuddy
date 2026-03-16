@@ -615,6 +615,7 @@ export function DashboardPage() {
     chatInput,
     setChatInput,
     isChatProcessing,
+    chatStatusText,
     isChatRecording,
     chatAudioStream,
     chatEndRef,
@@ -903,6 +904,7 @@ export function DashboardPage() {
             chatInput={chatInput}
             setChatInput={setChatInput}
             isChatProcessing={isChatProcessing}
+            chatStatusText={chatStatusText}
             isChatRecording={isChatRecording}
             chatAudioStream={chatAudioStream}
             chatEndRef={chatEndRef}

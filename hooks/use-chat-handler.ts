@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import type { Transaction, AIProvider, ExchangeRateType } from "@/lib/app-context"
 import {
   callAI, callAIChat, callAIUpdateDetect, callAIDeleteDetect, callAIRecurringDetect,
-  sanitizeUserInput, type ChatTurn, type AIAttachment,
+  transcribeAudioAttachment, sanitizeUserInput, type ChatTurn, type AIAttachment,
 } from "@/lib/ai"
 import type { ExchangeRates } from "@/hooks/use-exchange-rate"
 import { fileToBase64 } from "@/components/dashboard/shared"
@@ -103,6 +103,7 @@ export function useChatHandler({
   })
   const [chatInput, setChatInput] = useState("")
   const [isChatProcessing, setIsChatProcessing] = useState(false)
+  const [chatStatusText, setChatStatusText] = useState<string | null>(null)
   const [isChatRecording, setIsChatRecording] = useState(false)
   const [chatAudioStream, setChatAudioStream] = useState<MediaStream | null>(null)
 
@@ -622,25 +623,14 @@ export function useChatHandler({
       }
       // Transcribe first → route through intent detection (modify/delete/recurring/new tx)
       setIsChatProcessing(true)
-      try {
-        const transcribed = await callAIChat(
-          aiProvider, apiKey,
-          "Transcribí el audio a texto en español rioplatense. Devolvé ÚNICAMENTE el texto hablado, sin nada más.",
-          [{ role: "user" as const, text: "🎤" }],
-          attachment
-        )
-        setIsChatProcessing(false)
-        const cleanText = transcribed.trim()
-        if (cleanText) {
-          await processMessage(cleanText)
-        } else {
-          // Transcription empty — fall back to conversational with the audio
-          const prevMessages = chatMessagesRef.current
-          setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
-          await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
-        }
-      } catch {
-        setIsChatProcessing(false)
+      setChatStatusText("Transcribiendo...")
+      const cleanText = await transcribeAudioAttachment(aiProvider, apiKey, attachment)
+      setChatStatusText(null)
+      setIsChatProcessing(false)
+      if (cleanText) {
+        await processMessage(cleanText)
+      } else {
+        // No transcription (Claude, empty result) — fall back to conversational with raw audio
         const prevMessages = chatMessagesRef.current
         setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
         await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
@@ -687,21 +677,13 @@ export function useChatHandler({
           // Transcribe → route through full intent detection (modify/delete/recurring/new tx)
           if (apiKey.trim()) {
             setIsChatProcessing(true)
-            try {
-              const transcribed = await callAIChat(
-                aiProvider, apiKey,
-                "Transcribí el audio a texto en español rioplatense. Devolvé ÚNICAMENTE el texto hablado, sin nada más.",
-                [{ role: "user" as const, text: "🎤" }],
-                attachment
-              )
-              setIsChatProcessing(false)
-              const cleanText = transcribed.trim()
-              if (cleanText) {
-                await processMessageRef.current?.(cleanText)
-                return
-              }
-            } catch {
-              setIsChatProcessing(false)
+            setChatStatusText("Transcribiendo...")
+            const cleanText = await transcribeAudioAttachment(aiProvider, apiKey, attachment)
+            setChatStatusText(null)
+            setIsChatProcessing(false)
+            if (cleanText) {
+              await processMessageRef.current?.(cleanText)
+              return
             }
           }
           // Fallback: conversational AI with raw audio
@@ -731,6 +713,7 @@ export function useChatHandler({
 
   const resetChat = () => {
     setChatMessages([INITIAL_BOT_MESSAGE])
+    chatLastRegisteredRef.current = null
     try { sessionStorage.setItem("bb_chat_messages", JSON.stringify([INITIAL_BOT_MESSAGE])) } catch {}
   }
 
@@ -740,6 +723,7 @@ export function useChatHandler({
     chatInput,
     setChatInput,
     isChatProcessing,
+    chatStatusText,
     isChatRecording,
     chatAudioStream,
     chatEndRef,

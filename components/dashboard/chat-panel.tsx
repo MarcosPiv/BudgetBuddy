@@ -19,6 +19,7 @@ interface ChatPanelProps {
   chatInput: string
   setChatInput: (v: string) => void
   isChatProcessing: boolean
+  chatStatusText?: string | null
   isChatRecording: boolean
   chatAudioStream: MediaStream | null
   chatEndRef: React.RefObject<HTMLDivElement>
@@ -102,6 +103,7 @@ export function ChatPanel({
   chatInput,
   setChatInput,
   isChatProcessing,
+  chatStatusText,
   isChatRecording,
   chatAudioStream,
   chatEndRef,
@@ -278,10 +280,15 @@ export function ChatPanel({
                 <div className="flex items-center justify-center w-6 h-6 rounded-lg shrink-0 mt-0.5 bg-accent/15">
                   <Bot className="w-3 h-3 text-accent" />
                 </div>
-                <div className="bg-secondary text-foreground rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm flex gap-1 items-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                <div className="bg-secondary text-foreground rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm flex gap-1.5 items-center">
+                  {chatStatusText
+                    ? <span className="text-xs text-muted-foreground">{chatStatusText}</span>
+                    : <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                      </>
+                  }
                 </div>
               </motion.div>
             )}

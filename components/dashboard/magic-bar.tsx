@@ -779,7 +779,7 @@ export function MagicBar({
                 >
                   {newCurrency}
                 </button>
-                {[{ label: "Hoy", days: 0 }, { label: "Ayer", days: 1 }, { label: "2 días", days: 2 }].map(({ label, days }) => {
+                {[{ label: "Hoy", days: 0 }, { label: "Ayer", days: 1 }, { label: "2 días", days: 2, hideOnMobile: true }].map(({ label, days, hideOnMobile }) => {
                   const target = presetDates[days]
                   const isActive = newTxDate?.toDateString() === target.toDateString()
                   return (
@@ -787,7 +787,7 @@ export function MagicBar({
                       key={label}
                       type="button"
                       onClick={() => setNewTxDate(isActive ? null : target)}
-                      className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${isActive
+                      className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${hideOnMobile ? "hidden sm:inline-flex" : ""} ${isActive
                         ? "border-accent/40 bg-accent/10 text-accent"
                         : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
                         }`}
