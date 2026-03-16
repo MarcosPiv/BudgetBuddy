@@ -168,6 +168,15 @@ export function MagicBar({
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+
+  // Precompute preset dates for inline chips
+  const presetDates = [0, 1, 2].map(days => {
+    const d = new Date()
+    d.setDate(d.getDate() - days)
+    return d
+  })
+  const isPresetDate = newTxDate ? presetDates.some(d => d.toDateString() === newTxDate.toDateString()) : false
+  const isCustomDate = newTxDate !== null && !isPresetDate
   const [isClickMode, setIsClickMode] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [dragY, setDragY] = useState(0)
@@ -210,6 +219,20 @@ export function MagicBar({
     ta.style.height = "auto"
     ta.style.height = `${Math.min(ta.scrollHeight, 80)}px`
   }, [magicInput])
+
+  // `/` keyboard shortcut — focus magic bar textarea
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "/") return
+      const tag = (e.target as HTMLElement).tagName.toLowerCase()
+      if (tag === "input" || tag === "textarea" || tag === "select") return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      e.preventDefault()
+      textareaRef.current?.focus()
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [])
 
   // Derived: progress toward each threshold (0–1)
   const lockProgress = Math.min(dragY / 100, 1)
@@ -756,21 +779,39 @@ export function MagicBar({
                 >
                   {newCurrency}
                 </button>
+                {[{ label: "Hoy", days: 0 }, { label: "Ayer", days: 1 }, { label: "2 días", days: 2 }].map(({ label, days }) => {
+                  const target = presetDates[days]
+                  const isActive = newTxDate?.toDateString() === target.toDateString()
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setNewTxDate(isActive ? null : target)}
+                      className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${isActive
+                        ? "border-accent/40 bg-accent/10 text-accent"
+                        : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+                        }`}
+                      aria-label={label}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
                 <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${newTxDate
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${isCustomDate
                         ? "border-accent/40 bg-accent/10 text-accent"
                         : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
                         }`}
-                      aria-label="Seleccionar fecha"
+                      aria-label="Elegir fecha"
                     >
                       <CalendarIcon className="w-3 h-3 shrink-0" />
                       <span>
-                        {newTxDate
-                          ? newTxDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
-                          : "Fecha"}
+                        {isCustomDate
+                          ? newTxDate!.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+                          : "Elegir"}
                       </span>
                     </button>
                   </PopoverTrigger>

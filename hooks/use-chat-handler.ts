@@ -92,7 +92,15 @@ export function useChatHandler({
   formatCurrency,
   chatOpen,
 }: ChatHandlerParams) {
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([INITIAL_BOT_MESSAGE])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [INITIAL_BOT_MESSAGE]
+    try {
+      const saved = sessionStorage.getItem("bb_chat_messages")
+      const parsed = saved ? JSON.parse(saved) : null
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    } catch {}
+    return [INITIAL_BOT_MESSAGE]
+  })
   const [chatInput, setChatInput] = useState("")
   const [isChatProcessing, setIsChatProcessing] = useState(false)
   const [isChatRecording, setIsChatRecording] = useState(false)
@@ -106,11 +114,27 @@ export function useChatHandler({
   // Refs so onstop always reads fresh values regardless of closure staleness
   const chatMessagesRef = useRef(chatMessages)
   const dispatchChatRef = useRef<((label: string, prev: ChatMessage[], att?: AIAttachment) => Promise<void>) | null>(null)
+  const processMessageRef = useRef<((msg: string) => Promise<void>) | null>(null)
   // Tracks the last transaction registered from the chat (for follow-up corrections)
   const chatLastRegisteredRef = useRef<{ description: string; amount: number; type: "expense" | "income"; currency: "ARS" | "USD" } | null>(null)
 
+  // Always-fresh refs for async handlers — avoids stale closures after React re-renders mid-await
+  const transactionsRef = useRef(transactions)
+  const updateTransactionRef = useRef(updateTransaction)
+  const deleteTransactionRef = useRef(deleteTransaction)
+  const addTransactionRef = useRef(addTransaction)
+  transactionsRef.current = transactions
+  updateTransactionRef.current = updateTransaction
+  deleteTransactionRef.current = deleteTransaction
+  addTransactionRef.current = addTransaction
+
   // Keep refs in sync so onstop callbacks always read fresh values
   useEffect(() => { chatMessagesRef.current = chatMessages }, [chatMessages])
+
+  // Persist chat history to sessionStorage
+  useEffect(() => {
+    try { sessionStorage.setItem("bb_chat_messages", JSON.stringify(chatMessages)) } catch {}
+  }, [chatMessages])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -307,19 +331,7 @@ export function useChatHandler({
   // Always point to the latest dispatchChatMessage
   dispatchChatRef.current = dispatchChatMessage
 
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!chatInput.trim() || isChatProcessing || isChatRecording) return
-    let userMsg: string
-    try {
-      userMsg = sanitizeUserInput(chatInput.trim())
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Entrada inválida."
-      setChatMessages(prev => [...prev, { role: "bot", text: msg }])
-      setChatInput("")
-      return
-    }
-    setChatInput("")
+  const processMessage = async (userMsg: string) => {
     const prevMessages = chatMessages
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }])
 
@@ -339,10 +351,10 @@ export function useChatHandler({
         const del = await callAIDeleteDetect(aiProvider, apiKey, userMsg)
         if (del.match) {
           handled = true
-          const found = findTransactionByMatch(transactions, del.match)
+          const found = findTransactionByMatch(transactionsRef.current, del.match)
           if (found) {
             const label = `${found.type === "income" ? "📈" : "📉"} ${found.description} · ${formatCurrency(found.currency === "USD" ? found.amount * (found.txRate ?? usdRate) : found.amount)}`
-            deleteTransaction(found.id, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
+            deleteTransactionRef.current(found.id, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
             setChatMessages(prev => [...prev, { role: "bot", text: `🗑️ Eliminado — ${label}.` }])
           } else {
             const dateHint = del.match.daysAgo !== undefined ? ` de hace ${del.match.daysAgo} día${del.match.daysAgo !== 1 ? "s" : ""}` : ""
@@ -373,9 +385,9 @@ export function useChatHandler({
         const rec = await callAIRecurringDetect(aiProvider, apiKey, userMsg)
         if (rec.match) {
           handled = true
-          const found = findTransactionByMatch(transactions, rec.match)
+          const found = findTransactionByMatch(transactionsRef.current, rec.match)
           if (found) {
-            updateTransaction(found.id, {
+            updateTransactionRef.current(found.id, {
               description: found.description, amount: found.amount, type: found.type,
               icon: found.icon, category: found.category, date: new Date(found.date),
               currency: found.currency, amountUsd: found.amountUsd, txRate: found.txRate,
@@ -400,7 +412,7 @@ export function useChatHandler({
     }
 
     // ── Modify existing transaction by description/date (AI-powered) ────────
-    const MODIFY_WORDS = ["agregale", "ponele", "modificá", "modifica", "renombrá", "renombra", "editá", "edita", "cambiale", "añadile", "agrega", "ponele", "cambia"]
+    const MODIFY_WORDS = ["agregale", "ponele", "poné", "modificá", "modifica", "renombrá", "renombra", "editá", "edita", "cambiale", "cambialo", "cambiala", "cambiá", "añadile", "agrega", "cambia", "actualizá", "actualiza", "pasá", "pasalo", "pasala", "subí", "bajá", "ponerle", "cambiemos", "corregí", "corrige"]
     const isModifyIntent = MODIFY_WORDS.some(w => lowerMsg.includes(w))
     if (isModifyIntent) {
       if (!apiKey.trim()) {
@@ -413,9 +425,9 @@ export function useChatHandler({
         const upd = await callAIUpdateDetect(aiProvider, apiKey, userMsg)
         if (upd.match && Object.values(upd.updates).some(v => v !== undefined)) {
           handled = true
-          const found = findTransactionByMatch(transactions, upd.match)
+          const found = findTransactionByMatch(transactionsRef.current, upd.match)
           if (found) {
-            updateTransaction(found.id, {
+            updateTransactionRef.current(found.id, {
               description: upd.updates.description ?? found.description,
               amount: upd.updates.amount ?? found.amount,
               type: upd.updates.type ?? found.type,
@@ -453,7 +465,7 @@ export function useChatHandler({
     }
 
     // ── Update intent: check before trying to parse as a new transaction ────
-    const UPDATE_INTENT = /actualiz|corregí|corrig|cambi[aé]|era en|fue en|fueron en|modific|es en|son en|no oficial|no blue|no tarjeta|no mep|en dólar|en dolar/i
+    const UPDATE_INTENT = /actualiz|corregí|corrig|cambi[aáé]|era en|fue en|fueron en|modific|es en|son en|no oficial|no blue|no tarjeta|no mep|en dólar|en dolar/i
     const RATE_PATTERNS: { pattern: RegExp; type: ExchangeRateType }[] = [
       { pattern: /blue|azul/i, type: "BLUE" },
       { pattern: /oficial/i, type: "OFICIAL" },
@@ -464,7 +476,7 @@ export function useChatHandler({
     const isQuestion = /[?]/.test(userMsg) || /^(qué|que|cuál|cual|cuánto|cuanto|cómo|como)\b/i.test(userMsg)
     if ((UPDATE_INTENT.test(userMsg) || (hasRateKeyword && !isQuestion)) && chatLastRegisteredRef.current) {
       const ref = chatLastRegisteredRef.current
-      const found = [...transactions]
+      const found = [...transactionsRef.current]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .find(t => t.description === ref.description && Math.abs(t.amount - ref.amount) < 0.01 && t.type === ref.type)
       if (found) {
@@ -487,7 +499,7 @@ export function useChatHandler({
           const finalCurrency: "ARS" | "USD" = newRateType ? "USD" : found.currency
           const finalRate = newRate ?? found.txRate
           const finalRateType = newRateType ?? (found.exchangeRateType as ExchangeRateType | null)
-          updateTransaction(found.id, {
+          updateTransactionRef.current(found.id, {
             description: found.description,
             amount: finalAmount,
             type: found.type,
@@ -545,7 +557,7 @@ export function useChatHandler({
                 usdToast = true
               }
             }
-            addTransaction({
+            addTransactionRef.current({
               description: result.description,
               amount: result.amount,
               type: result.type as "expense" | "income",
@@ -582,6 +594,67 @@ export function useChatHandler({
     await dispatchChatMessage(userMsg, prevMessages)
   }
 
+  // Keep ref in sync so onstop always calls the latest processMessage
+  processMessageRef.current = processMessage
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!chatInput.trim() || isChatProcessing || isChatRecording) return
+    let userMsg: string
+    try {
+      userMsg = sanitizeUserInput(chatInput.trim())
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Entrada inválida."
+      setChatMessages(prev => [...prev, { role: "bot", text: msg }])
+      setChatInput("")
+      return
+    }
+    setChatInput("")
+    await processMessage(userMsg)
+  }
+
+  const submitChatMessage = async (text: string, attachment?: AIAttachment) => {
+    if ((!text.trim() && !attachment) || isChatProcessing || isChatRecording) return
+    if (attachment?.type === "audio") {
+      if (!apiKey.trim()) {
+        setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para usar el asistente." }])
+        return
+      }
+      // Transcribe first → route through intent detection (modify/delete/recurring/new tx)
+      setIsChatProcessing(true)
+      try {
+        const transcribed = await callAIChat(
+          aiProvider, apiKey,
+          "Transcribí el audio a texto en español rioplatense. Devolvé ÚNICAMENTE el texto hablado, sin nada más.",
+          [{ role: "user" as const, text: "🎤" }],
+          attachment
+        )
+        setIsChatProcessing(false)
+        const cleanText = transcribed.trim()
+        if (cleanText) {
+          await processMessage(cleanText)
+        } else {
+          // Transcription empty — fall back to conversational with the audio
+          const prevMessages = chatMessagesRef.current
+          setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
+          await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
+        }
+      } catch {
+        setIsChatProcessing(false)
+        const prevMessages = chatMessagesRef.current
+        setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
+        await dispatchChatMessage("🎤 Mensaje de voz", prevMessages, attachment)
+      }
+      return
+    }
+    let userMsg: string
+    try {
+      userMsg = sanitizeUserInput(text.trim())
+    } catch { return }
+    setChatInput("")
+    await processMessage(userMsg)
+  }
+
   const startChatRecording = async () => {
     chatAudioHoldRef.current = true
     try {
@@ -611,6 +684,27 @@ export function useChatHandler({
           const file = new File([blob], `chat-voz-${Date.now()}.webm`, { type: "audio/webm" })
           const base64 = await fileToBase64(file)
           const attachment: AIAttachment = { type: "audio", base64, mimeType: "audio/webm", file }
+          // Transcribe → route through full intent detection (modify/delete/recurring/new tx)
+          if (apiKey.trim()) {
+            setIsChatProcessing(true)
+            try {
+              const transcribed = await callAIChat(
+                aiProvider, apiKey,
+                "Transcribí el audio a texto en español rioplatense. Devolvé ÚNICAMENTE el texto hablado, sin nada más.",
+                [{ role: "user" as const, text: "🎤" }],
+                attachment
+              )
+              setIsChatProcessing(false)
+              const cleanText = transcribed.trim()
+              if (cleanText) {
+                await processMessageRef.current?.(cleanText)
+                return
+              }
+            } catch {
+              setIsChatProcessing(false)
+            }
+          }
+          // Fallback: conversational AI with raw audio
           const prevMessages = chatMessagesRef.current
           setChatMessages(prev => [...prev, { role: "user", text: "🎤 Mensaje de voz" }])
           await dispatchChatRef.current?.("🎤 Mensaje de voz", prevMessages, attachment)
@@ -635,6 +729,11 @@ export function useChatHandler({
     setChatAudioStream(null)
   }
 
+  const resetChat = () => {
+    setChatMessages([INITIAL_BOT_MESSAGE])
+    try { sessionStorage.setItem("bb_chat_messages", JSON.stringify([INITIAL_BOT_MESSAGE])) } catch {}
+  }
+
   return {
     chatMessages,
     setChatMessages,
@@ -645,6 +744,8 @@ export function useChatHandler({
     chatAudioStream,
     chatEndRef,
     handleChatSubmit,
+    submitChatMessage,
+    resetChat,
     startChatRecording,
     stopChatRecording,
   }

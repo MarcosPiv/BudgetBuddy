@@ -2,9 +2,15 @@
 
 import { useRef, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Bot, User, Send, Mic, Loader2, Trash2, Lock, ChevronLeft, ChevronUp } from "lucide-react"
+import { X, Bot, User, Send, Mic, Loader2, Trash2, Lock, ChevronLeft, ChevronUp, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ChatMessage } from "./shared"
+
+const SUGGESTED_PROMPTS = [
+  "¿Cuánto gasté esta semana?",
+  "¿Me alcanza el presupuesto este mes?",
+  "¿En qué categoría gasto más?",
+]
 
 interface ChatPanelProps {
   chatOpen: boolean
@@ -17,6 +23,8 @@ interface ChatPanelProps {
   chatAudioStream: MediaStream | null
   chatEndRef: React.RefObject<HTMLDivElement>
   handleChatSubmit: (e: React.FormEvent) => void
+  onQuickPrompt: (text: string) => void
+  onResetChat: () => void
   startChatRecording: () => void
   stopChatRecording: (opts?: { cancel?: boolean }) => void
 }
@@ -98,6 +106,8 @@ export function ChatPanel({
   chatAudioStream,
   chatEndRef,
   handleChatSubmit,
+  onQuickPrompt,
+  onResetChat,
   startChatRecording,
   stopChatRecording,
 }: ChatPanelProps) {
@@ -180,15 +190,27 @@ export function ChatPanel({
                 </p>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
-              onClick={() => setChatOpen(false)}
-              aria-label="Cerrar chat"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                onClick={onResetChat}
+                aria-label="Reiniciar chat"
+                title="Reiniciar chat"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                onClick={() => setChatOpen(false)}
+                aria-label="Cerrar chat"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -221,6 +243,31 @@ export function ChatPanel({
                 </div>
               </motion.div>
             ))}
+            {/* Suggested prompts — visible only when no user message sent yet */}
+            <AnimatePresence>
+              {chatMessages.every(m => m.role === "bot") && !isChatProcessing && (
+                <motion.div
+                  key="suggested-prompts"
+                  className="flex flex-col gap-1.5 mt-1"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {SUGGESTED_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => onQuickPrompt(prompt)}
+                      className="text-left px-3 py-2 rounded-xl text-xs text-muted-foreground border border-border/60 hover:border-accent/40 hover:text-foreground hover:bg-accent/5 transition-all cursor-pointer"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {isChatProcessing && (
               <motion.div
                 className="flex gap-2.5"

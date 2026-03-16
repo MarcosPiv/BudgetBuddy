@@ -378,6 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const signOut = () => {
     // Optimistic: clear state and navigate immediately so the UI never freezes
     sessionStorage.removeItem("bb_view")
+    sessionStorage.removeItem("bb_chat_messages")
     setUser(null)
     setTransactions([])
     setUserName("Usuario")

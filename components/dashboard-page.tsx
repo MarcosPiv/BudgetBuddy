@@ -377,8 +377,13 @@ export function DashboardPage() {
       const valid = results.filter(r => r.type !== "unknown")
 
       if (valid.length === 0) {
-        setAiError("No detecté una transacción. Describí un gasto o ingreso (ej: 'gasté 5000 en comida').")
-        setTimeout(() => setAiError(null), 5000)
+        setChatOpen(true)
+        const audioAtt = aiAttachments.find(a => a.type === "audio")
+        if (audioAtt) {
+          submitChatMessage("", audioAtt)
+        } else {
+          submitChatMessage(textInput)
+        }
         return
       }
 
@@ -614,6 +619,8 @@ export function DashboardPage() {
     chatAudioStream,
     chatEndRef,
     handleChatSubmit,
+    submitChatMessage,
+    resetChat,
     startChatRecording,
     stopChatRecording,
   } = useChatHandler({
@@ -900,6 +907,8 @@ export function DashboardPage() {
             chatAudioStream={chatAudioStream}
             chatEndRef={chatEndRef}
             handleChatSubmit={handleChatSubmit}
+            onQuickPrompt={submitChatMessage}
+            onResetChat={resetChat}
             startChatRecording={startChatRecording}
             stopChatRecording={stopChatRecording}
           />
