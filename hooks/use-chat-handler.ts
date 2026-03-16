@@ -104,6 +104,7 @@ export function useChatHandler({
   const [chatInput, setChatInput] = useState("")
   const [isChatProcessing, setIsChatProcessing] = useState(false)
   const [chatStatusText, setChatStatusText] = useState<string | null>(null)
+  const [lastModifiedTxId, setLastModifiedTxId] = useState<string | null>(null)
   const [isChatRecording, setIsChatRecording] = useState(false)
   const [chatAudioStream, setChatAudioStream] = useState<MediaStream | null>(null)
 
@@ -450,6 +451,8 @@ export function useChatHandler({
               .map(([k, v]) => `${fieldLabels[k] ?? k}: "${v}"`)
               .join(", ")
             setChatMessages(prev => [...prev, { role: "bot", text: `✅ Actualizado — ${found.description} — ${summary}.` }])
+            setLastModifiedTxId(found.id)
+            setTimeout(() => setLastModifiedTxId(null), 2500)
           } else {
             const dateHint = upd.match.daysAgo !== undefined ? ` de hace ${upd.match.daysAgo} día${upd.match.daysAgo !== 1 ? "s" : ""}` : ""
             setChatMessages(prev => [...prev, { role: "bot", text: `No encontré ninguna transacción que coincida con "${upd.match!.description}"${dateHint}. Revisá la lista de movimientos y volvé a intentar con el nombre exacto.` }])
@@ -521,6 +524,8 @@ export function useChatHandler({
           if (hasAmountChange) parts.push(`monto: ${finalAmount}`)
           parts.push(`total: ${formatCurrency(arsTotal)}`)
           setChatMessages(prev => [...prev, { role: "bot", text: `✅ Actualizado — ${parts.join(", ")}.` }])
+          setLastModifiedTxId(found.id)
+          setTimeout(() => setLastModifiedTxId(null), 2500)
           return
         }
       }
@@ -724,6 +729,7 @@ export function useChatHandler({
     setChatInput,
     isChatProcessing,
     chatStatusText,
+    lastModifiedTxId,
     isChatRecording,
     chatAudioStream,
     chatEndRef,

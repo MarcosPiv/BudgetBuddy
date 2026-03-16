@@ -6,12 +6,6 @@ import { X, Bot, User, Send, Mic, Loader2, Trash2, Lock, ChevronLeft, ChevronUp,
 import { Button } from "@/components/ui/button"
 import type { ChatMessage } from "./shared"
 
-const SUGGESTED_PROMPTS = [
-  "¿Cuánto gasté esta semana?",
-  "¿Me alcanza el presupuesto este mes?",
-  "¿En qué categoría gasto más?",
-]
-
 interface ChatPanelProps {
   chatOpen: boolean
   setChatOpen: (v: boolean) => void
@@ -26,6 +20,7 @@ interface ChatPanelProps {
   handleChatSubmit: (e: React.FormEvent) => void
   onQuickPrompt: (text: string) => void
   onResetChat: () => void
+  suggestedPrompts?: string[]
   startChatRecording: () => void
   stopChatRecording: (opts?: { cancel?: boolean }) => void
 }
@@ -110,6 +105,7 @@ export function ChatPanel({
   handleChatSubmit,
   onQuickPrompt,
   onResetChat,
+  suggestedPrompts = ["¿Cuánto gasté esta semana?", "¿Me alcanza el presupuesto este mes?", "¿En qué categoría gasto más?"],
   startChatRecording,
   stopChatRecording,
 }: ChatPanelProps) {
@@ -256,7 +252,7 @@ export function ChatPanel({
                   exit={{ opacity: 0, y: 4 }}
                   transition={{ duration: 0.2 }}
                 >
-                  {SUGGESTED_PROMPTS.map((prompt) => (
+                  {suggestedPrompts.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"

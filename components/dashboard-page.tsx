@@ -64,6 +64,7 @@ export function DashboardPage() {
   // ── Magic Bar state ──────────────────────────────────────────────────────────
   const [magicInput, setMagicInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+  const [processingLabel, setProcessingLabel] = useState("Analizando con IA...")
   const [observation, setObservation] = useState("")
   const [showObservation, setShowObservation] = useState(false)
   const [newCurrency, setNewCurrency] = useState<"ARS" | "USD">("ARS")
@@ -160,6 +161,22 @@ export function DashboardPage() {
 
   // ── Derived / computed ───────────────────────────────────────────────────────
   const isExpensesOnly = profileMode === "expenses_only"
+
+  const suggestedPrompts = useMemo(() => {
+    if (transactions.length === 0) {
+      return ["¿Cómo registro un gasto?", "¿Qué puedo consultar?", "¿Cómo funciona el asistente?"]
+    }
+    const prompts = ["¿Cuánto gasté esta semana?"]
+    if (monthlyBudget > 0 && isExpensesOnly) {
+      prompts.push("¿Me alcanza el presupuesto este mes?")
+    } else {
+      prompts.push("¿Cómo está mi balance este mes?")
+    }
+    prompts.push(transactions.some(t => t.currency === "USD")
+      ? "¿Cuánto gasté en dólares este mes?"
+      : "¿En qué categoría gasto más?")
+    return prompts
+  }, [transactions, monthlyBudget, isExpensesOnly])
 
   const filteredTransactions = useMemo(() => {
     const now = new Date()
@@ -344,11 +361,12 @@ export function DashboardPage() {
       return
     }
 
+    const capturedAttachments = [...(directAttachments ?? attachments)]
+    setProcessingLabel(capturedAttachments.some(a => a.type === "audio") ? "Procesando audio..." : "Analizando con IA...")
     setIsProcessing(true)
     setAiError(null)
 
     const textInput = magicInput.trim()
-    const capturedAttachments = [...(directAttachments ?? attachments)]
     const obs = observation.trim() || undefined
     const curr = newCurrency
     const appliedRate = getAppliedRate()
@@ -616,6 +634,7 @@ export function DashboardPage() {
     setChatInput,
     isChatProcessing,
     chatStatusText,
+    lastModifiedTxId,
     isChatRecording,
     chatAudioStream,
     chatEndRef,
@@ -894,6 +913,7 @@ export function DashboardPage() {
               usdRate={usdRate}
               openEdit={openEdit}
               onDelete={handleDeleteWithUndo}
+              lastModifiedTxId={lastModifiedTxId}
             />
           </main>
 
@@ -905,6 +925,7 @@ export function DashboardPage() {
             setChatInput={setChatInput}
             isChatProcessing={isChatProcessing}
             chatStatusText={chatStatusText}
+            suggestedPrompts={suggestedPrompts}
             isChatRecording={isChatRecording}
             chatAudioStream={chatAudioStream}
             chatEndRef={chatEndRef}
@@ -921,6 +942,7 @@ export function DashboardPage() {
           magicInput={magicInput}
           setMagicInput={setMagicInput}
           isProcessing={isProcessing}
+          processingLabel={processingLabel}
           attachments={attachments}
           removeAttachment={removeAttachment}
           newCurrency={newCurrency}

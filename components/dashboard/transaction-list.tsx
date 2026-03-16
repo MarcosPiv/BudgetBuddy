@@ -54,6 +54,7 @@ interface TransactionListProps {
   usdRate: number
   openEdit: (tx: Transaction) => void
   onDelete: (tx: Transaction) => void
+  lastModifiedTxId?: string | null
 }
 
 export function TransactionList({
@@ -71,6 +72,7 @@ export function TransactionList({
   usdRate,
   openEdit,
   onDelete,
+  lastModifiedTxId,
 }: TransactionListProps) {
 
   // Build flat list with date separators
@@ -207,7 +209,7 @@ export function TransactionList({
                   initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 16 }}
-                  className="group relative"
+                  className={`group relative rounded-2xl transition-all duration-700 ${lastModifiedTxId === tx.id ? "ring-1 ring-emerald-500/50 bg-emerald-500/5" : ""}`}
                 >
                   <SwipeCard
                     onDragStart={() => { dragActiveRef.current = true }}

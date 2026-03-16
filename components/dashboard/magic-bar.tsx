@@ -27,6 +27,7 @@ interface MagicBarProps {
   magicInput: string
   setMagicInput: (v: string) => void
   isProcessing: boolean
+  processingLabel?: string
   attachments: Attachment[]
   removeAttachment: (i: number) => void
   newCurrency: "ARS" | "USD"
@@ -164,7 +165,8 @@ export function MagicBar({
   stopRecording,
   aiError,
   onManualEntry,
-  audioStream
+  audioStream,
+  processingLabel = "Analizando con IA...",
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -901,7 +903,7 @@ export function MagicBar({
               exit={{ opacity: 0, height: 0 }}
             >
               <Loader2 className="w-3 h-3 animate-spin" />
-              <span>Analizando con IA...</span>
+              <span>{processingLabel}</span>
             </motion.div>
           )}
         </AnimatePresence>
