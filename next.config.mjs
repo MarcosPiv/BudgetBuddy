@@ -19,9 +19,26 @@ const nextConfig = {
           // Control referrer info sent on navigation
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // Restrict access to browser features not used by the app
+          { key: "Permissions-Policy", value: "camera=self, microphone=self, geolocation=()" },
+          // Force HTTPS for 1 year (production only — harmless in dev)
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          // Content Security Policy — restricts origins for every resource type
           {
-            key: "Permissions-Policy",
-            value: "camera=self, microphone=self, geolocation=()",
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline'",   // Next.js App Router requires unsafe-inline
+              "style-src 'self' 'unsafe-inline'",    // Tailwind inline styles
+              "img-src 'self' data: blob: https://*.supabase.co",
+              "font-src 'self'",
+              "media-src 'self' blob:",              // Audio recording playback
+              // Allowed external API connections
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://dolarapi.com",
+              "object-src 'none'",                   // Block Flash/plugins
+              "base-uri 'self'",                     // Prevent base-tag injection
+              "form-action 'self'",                  // Forms can only submit to same origin
+              "frame-ancestors 'none'",              // Stronger clickjacking protection
+            ].join("; "),
           },
         ],
       },

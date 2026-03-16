@@ -34,7 +34,7 @@ export function ProfilePage() {
 
   const handleSaveName = async () => {
     if (!localName.trim()) return
-    const newName = localName.trim()
+    const newName = localName.trim().slice(0, 50)
     setUserName(newName)
     await saveProfile({ userName: newName })
     setSavedName(true)

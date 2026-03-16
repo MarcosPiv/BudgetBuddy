@@ -68,6 +68,14 @@ export function AuthPage() {
       setError("Completá todos los campos.")
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError("El email no tiene un formato válido.")
+      return
+    }
+    if (mode === "register" && name.trim().length > 50) {
+      setError("El nombre no puede tener más de 50 caracteres.")
+      return
+    }
     if (password.length < 6) {
       setError("La contraseña debe tener al menos 6 caracteres.")
       return
@@ -132,6 +140,10 @@ export function AuthPage() {
 
     if (!forgotEmail.trim()) {
       setError("Ingresá tu email.")
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(forgotEmail.trim())) {
+      setError("El email no tiene un formato válido.")
       return
     }
 

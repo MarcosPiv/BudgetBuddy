@@ -110,6 +110,7 @@ export function DashboardPage() {
     isRecurring: false,
   })
   const dragActiveRef = useRef(false)
+  const lastMagicSubmitRef = useRef(0)
   const handleDeleteWithUndo = (tx: (typeof transactions)[number]) => {
     deleteTransaction(tx.id, (msg) => { setAiError(msg); setTimeout(() => setAiError(null), 5000) })
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -361,6 +362,10 @@ export function DashboardPage() {
       return
     }
 
+    const now = Date.now()
+    if (now - lastMagicSubmitRef.current < 2000) return   // 2-second throttle
+    lastMagicSubmitRef.current = now
+
     const capturedAttachments = [...(directAttachments ?? attachments)]
     setProcessingLabel(capturedAttachments.some(a => a.type === "audio") ? "Procesando audio..." : "Analizando con IA...")
     setIsProcessing(true)
@@ -552,6 +557,11 @@ export function DashboardPage() {
 
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
         if (blob.size < 500) return  // too short / empty recording, discard silently
+        if (blob.size > 10 * 1024 * 1024) {  // 10 MB max
+          setAiError("El audio es demasiado largo. Grabá un mensaje más corto.")
+          setTimeout(() => setAiError(null), 4000)
+          return
+        }
 
         const file = new File([blob], `voz-${Date.now()}.webm`, { type: "audio/webm" })
         const newAtt: Attachment = { type: "audio", name: file.name, url: URL.createObjectURL(blob), file }
