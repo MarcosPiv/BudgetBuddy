@@ -57,12 +57,20 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 - Notificaciones push: recordatorio diario, alerta al 90% del presupuesto, aviso de fijos el 1° de cada mes, resumen semanal los lunes
 - Soporte completo para notch / Dynamic Island: `env(safe-area-inset-top/bottom)` en todos los headers y Toaster
 
+### Autenticación
+- **Email/contraseña** — registro y login tradicional
+- **OAuth** — login con Google y GitHub; el nombre y foto de perfil se toman automáticamente del proveedor
+- **Recuperación de contraseña** — flujo por email con redirect a `/reset-password`
+
 ### UX / UI
 - **Modo oscuro / claro** — paleta "Sage Morning" en modo claro; transición suave de 0.45s
 - **Gestos nativos Android** — botón/gesto back navega entre vistas; doble-back en la raíz muestra toast "Deslizá de nuevo para salir" y cierra la PWA
-- **Biometric lock** — bloqueo con WebAuthn (Face ID / huella) al abrir la app
+- **Avatar de perfil** — foto de Google/GitHub visible en el header del dashboard y en la página de perfil
+- **Picker de categoría rápido** — tap en el ícono de una transacción despliega chips de categoría sin abrir el diálogo completo; hover muestra lápiz como hint
+- **Empty state contextual** — usuario nuevo ve "¡Empezá a registrar!"; período sin movimientos muestra el filtro activo ("Sin movimientos esta semana")
 - **Tres proveedores de IA** — Claude (Anthropic), GPT-4o (OpenAI), Gemini (Google); switcheable en Ajustes
 - **Validación de API keys** — formato validado antes de cada llamada con mensajes de error amigables
+- **Timeout de IA** — 30 segundos máximo por request; libera la barra con mensaje claro si la API no responde
 
 ---
 

@@ -81,10 +81,19 @@ Auth and data are fully backed by Supabase (project `budgetbuddy`, region `sa-ea
 
 **Auth flows:**
 - Email/password signup + login via `supabase.auth.signInWithPassword` / `signUp`
+- **OAuth** — Google and GitHub via `supabase.auth.signInWithOAuth`. Redirect URLs must include `http://localhost:3000/**` and `https://finanzas-budget-buddy.vercel.app/**` in Supabase URL Configuration.
 - Email confirmation disabled by default during development (toggle in Supabase Dashboard → Auth → Providers → Email)
 - Password reset: `resetPasswordForEmail` with `redirectTo: {origin}/reset-password` → user lands on `/reset-password` page which catches `PASSWORD_RECOVERY` event
 - `onAuthStateChange` listener in `AppProvider`: on `PASSWORD_RECOVERY` sets `isPasswordRecovery = true` and navigates to `auth`; on sign-in loads profile + transactions and navigates to `dashboard`
 - Navigation guard: `AUTHENTICATED_VIEWS` constant + `currentViewRef` prevents redirect-to-dashboard on tab return / token refresh events
+
+**OAuth name + avatar:**
+`loadProfile` accepts the full Supabase `User` object (not just `userId`). On login:
+- Reads `user.user_metadata` for `full_name`, `name`, `user_name`, `preferred_username` (GitHub also provides `login`) as name fallback
+- Reads `user.user_metadata.picture` (Google) or `user.user_metadata.avatar_url` (GitHub) for avatar — rendered with `AvatarImage` in dashboard header and profile page
+- Treats DB `user_name === "Usuario"` as empty (placeholder) — overrides with OAuth name and persists to DB
+- On first OAuth login (no profile row): creates the row with the provider name via `upsert`
+- CSP `img-src` includes `https://lh3.googleusercontent.com` and `https://avatars.githubusercontent.com` (configured in `next.config.mjs`)
 
 **Stale-closure pattern:** `saveProfile()` accepts an optional `overrides` object. Always pass fresh values directly to avoid reading stale state from React closures:
 ```typescript
@@ -120,6 +129,14 @@ Three LLM providers are supported. The active provider is selected in Settings:
 `apiKey` in context is a computed value: `aiProvider === "claude" ? apiKeyClaude : aiProvider === "openai" ? apiKeyOpenAI : apiKeyGemini`. The dashboard checks `apiKey.trim()` before processing Magic Bar input.
 
 **API key validation:** `lib/ai.ts` defines `KEY_PREFIXES` (`sk-ant-`, `sk-`, `AIza`) and calls `validateKeyFormat()` before every API call — throws immediately with a user-friendly message instead of a network error. Settings page also validates on save and blocks if format is wrong.
+
+**Amount validation** in `validateOne`: rejects `amount < 1`, `amount > 1_000_000_000_000`, `Infinity`, and `NaN`. Prevents overflow in UI calculations and Supabase writes.
+
+**Magic Bar timeout**: `callAI` is wrapped in `Promise.race` with a 30-second timeout in `handleMagicSubmit`. If the API doesn't respond, `isProcessing` is released and a clear error is shown. `translateError` covers timeout, 500/502/503, rate limit, auth, and network errors.
+
+**Magic Bar fallback to chat**: when `valid.length === 0` (AI returned `type: "unknown"`):
+- If only image with no text → shows error "No reconocí una transacción en la imagen"
+- Otherwise → opens chat panel and calls `submitChatMessage(textInput, undefined, true)` with `force=true` to bypass `isChatProcessing` guard (100ms delay ensures panel is mounted)
 
 ### Theme System
 
@@ -165,8 +182,12 @@ Export lives entirely in `components/analytics-page.tsx` — removed from dashbo
 - **Swipe gestures** (mobile): each card is wrapped in `motion.div` with `drag="x"` + `dragSnapToOrigin`. Swiping right >75px triggers edit, left >75px triggers delete. Action hints (Pencil/Trash) are revealed via absolute-positioned background. `dragActiveRef` (useRef) prevents swipe from triggering the card's click/expand handler.
 - **Long-press** (mobile): 500ms hold shows edit/delete row below card.
 - **Hover buttons** (desktop): Pencil + Trash icons appear on hover.
+- **Category picker**: tapping the transaction icon (the colored square) opens an inline chip row with all categories. Hover reveals a pencil icon as affordance hint. Uses `onPointerDown={e.stopPropagation()}` to prevent Framer Motion's drag from consuming the pointer event. Calls `onCategoryChange(tx, category, icon)` → `updateTransaction(tx.id, { category, icon })` in the orchestrator.
+- **Empty state**: `totalTransactions === 0` → "¡Empezá a registrar!" (new user). `filteredTransactions.length === 0 && totalTransactions > 0` → "Sin movimientos esta semana/mes/año/período" with hint to change the filter.
 - **Search**: filters by description, category, observation.
 - **Recurring**: `isRecurring` flag on transaction; managed in Analytics page.
+
+**TransactionList props added**: `timeFilter: TimeFilter`, `totalTransactions: number`, `onCategoryChange: (tx, category, icon) => void`.
 
 ### UI Stack
 
