@@ -307,6 +307,8 @@ function validateKeyFormat(provider: AIProvider, key: string): void {
 
 function translateError(msg: string): string {
   const m = msg.toLowerCase()
+  if (m.includes("timeout") || m.includes("tardó demasiado") || m.includes("aborted") || m.includes("timed out"))
+    return "La IA tardó demasiado. Revisá tu conexión e intentá de nuevo."
   if (
     m.includes("api key") || m.includes("api_key") || m.includes("api-key") ||
     m.includes("401") || m.includes("403") ||
@@ -316,10 +318,12 @@ function translateError(msg: string): string {
   )
     return "API key inválida. Verificá tu clave en Ajustes."
   if (m.includes("rate limit") || m.includes("429") || m.includes("quota") || m.includes("resource_exhausted"))
-    return "Límite de requests alcanzado. Esperá unos segundos."
+    return "Límite de requests alcanzado. Esperá unos segundos e intentá de nuevo."
   if (m.includes("model_not_found") || m.includes("model not found") || m.includes("not found for api"))
     return "Modelo no disponible. Verificá tu plan de API."
-  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch"))
+  if (m.includes("500") || m.includes("502") || m.includes("503") || m.includes("service unavailable") || m.includes("overloaded"))
+    return "El servicio de IA no está disponible. Intentá en unos minutos."
+  if (m.includes("fetch") || m.includes("network") || m.includes("failed to fetch") || m.includes("load failed"))
     return "Error de conexión. Revisá tu internet."
   return msg
 }

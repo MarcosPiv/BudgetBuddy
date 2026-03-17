@@ -395,18 +395,33 @@ export function DashboardPage() {
         })),
       )
 
-      const aiResult = await callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined)
+      const aiResult = await Promise.race([
+        callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("La IA tardó demasiado. Revisá tu conexión e intentá de nuevo.")), 30_000)
+        ),
+      ])
       const results = Array.isArray(aiResult) ? aiResult : [aiResult]
       const valid = results.filter(r => r.type !== "unknown")
 
       if (valid.length === 0) {
-        setChatOpen(true)
         const audioAtt = aiAttachments.find(a => a.type === "audio")
-        if (audioAtt) {
-          submitChatMessage("", audioAtt)
-        } else {
-          submitChatMessage(textInput)
+        const hasText = textInput.trim().length > 0
+        if (!hasText && !audioAtt) {
+          // Only image/file — AI couldn't extract a transaction
+          setAiError("No reconocí una transacción en la imagen. Describí el gasto con palabras.")
+          setTimeout(() => setAiError(null), 5000)
+          return
         }
+        setChatOpen(true)
+        // Small delay to ensure chat panel is mounted before sending
+        setTimeout(() => {
+          if (audioAtt) {
+            submitChatMessage("", audioAtt, true)
+          } else {
+            submitChatMessage(textInput, undefined, true)
+          }
+        }, 100)
         return
       }
 

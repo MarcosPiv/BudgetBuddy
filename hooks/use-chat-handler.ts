@@ -619,8 +619,9 @@ export function useChatHandler({
     await processMessage(userMsg)
   }
 
-  const submitChatMessage = async (text: string, attachment?: AIAttachment) => {
-    if ((!text.trim() && !attachment) || isChatProcessing || isChatRecording) return
+  const submitChatMessage = async (text: string, attachment?: AIAttachment, force = false) => {
+    if ((!text.trim() && !attachment) || isChatRecording) return
+    if (!force && isChatProcessing) return
     if (attachment?.type === "audio") {
       if (!apiKey.trim()) {
         setChatMessages(prev => [...prev, { role: "bot", text: "Configurá tu API key en Ajustes para usar el asistente." }])
