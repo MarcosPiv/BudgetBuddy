@@ -286,7 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isOnline, user])
 
   // ── Data loaders ────────────────────────────────────────────────────────────
-  const loadProfile = async (u: { id: string; user_metadata?: Record<string, string> }) => {
+  const loadProfile = async (u: { id: string; user_metadata?: Record<string, unknown>; identities?: Array<{ identity_data?: Record<string, unknown> }> }) => {
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -294,14 +294,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .single()
 
     // Extract name from OAuth provider metadata as fallback
+    const meta = u.user_metadata ?? {}
+    const identityData = u.identities?.[0]?.identity_data ?? {}
     const oauthName: string =
-      u.user_metadata?.full_name ||
-      u.user_metadata?.name ||
-      u.user_metadata?.user_name ||
+      meta.full_name ||
+      meta.name ||
+      meta.user_name ||
+      meta.preferred_username ||
+      identityData.full_name ||
+      identityData.name ||
+      identityData.user_name ||
+      identityData.preferred_username ||
+      identityData.login ||
       "Usuario"
 
     if (data) {
-      setUserName(data.user_name ?? oauthName)
+      const hasRealName = data.user_name && data.user_name !== "Usuario"
+      const effectiveName = hasRealName ? data.user_name : oauthName
+      setUserName(effectiveName)
       setMonthlyBudget(data.monthly_budget ?? 200000)
       setProfileMode(data.profile_mode ?? "standard")
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
@@ -312,8 +322,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setApiKeyOpenAI(data.api_key_openai ?? "")
       setApiKeyGemini(data.api_key_gemini ?? "")
 
-      // Persist OAuth name to DB if profile exists but has no name yet
-      if (!data.user_name && oauthName !== "Usuario") {
+      // Persist OAuth name to DB if profile has no real name yet
+      if (!hasRealName && oauthName !== "Usuario") {
         await supabase.from("profiles").update({ user_name: oauthName }).eq("id", u.id)
       }
     } else if (oauthName !== "Usuario") {
