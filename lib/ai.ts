@@ -238,7 +238,7 @@ function capitalize(s: string): string {
 
 function validateOne(raw: ParsedTransaction): ParsedTransaction {
   if (!["expense", "income"].includes(raw.type)) raw.type = "expense"
-  if (typeof raw.amount !== "number" || !isFinite(raw.amount) || raw.amount <= 0 || raw.amount > 1_000_000_000_000)
+  if (typeof raw.amount !== "number" || !isFinite(raw.amount) || raw.amount < 1 || raw.amount > 1_000_000_000_000)
     throw new Error("Monto inválido en la respuesta.")
   if (!VALID_ICONS.includes(raw.icon)) raw.icon = "ShoppingCart"
   if (!VALID_CATEGORIES.includes(raw.category)) raw.category = "General"

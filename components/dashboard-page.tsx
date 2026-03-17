@@ -6,7 +6,7 @@ import {
   MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 import { callAI, type AIAttachment } from "@/lib/ai"
@@ -294,6 +294,7 @@ export function DashboardPage() {
   ]
 
   const initials = userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "U"
+  const avatarUrl = user?.user_metadata?.picture || user?.user_metadata?.avatar_url || null
 
   // ── Effects ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -845,6 +846,7 @@ export function DashboardPage() {
                 aria-label="Perfil"
               >
                 <Avatar className="w-8 h-8">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={userName} referrerPolicy="no-referrer" />}
                   <AvatarFallback className="bg-secondary text-foreground text-xs font-semibold">
                     {initials}
                   </AvatarFallback>
@@ -939,6 +941,9 @@ export function DashboardPage() {
               openEdit={openEdit}
               onDelete={handleDeleteWithUndo}
               lastModifiedTxId={lastModifiedTxId}
+              timeFilter={timeFilter}
+              totalTransactions={transactions.length}
+              onCategoryChange={(tx, category, icon) => updateTransaction(tx.id, { category, icon })}
             />
           </main>
 

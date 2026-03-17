@@ -1,17 +1,17 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Search, StickyNote, ShoppingCart, Wallet,
+  Search, StickyNote, ShoppingCart, Wallet, Sparkles,
 } from "lucide-react"
 // Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
 import { ReceiptImage } from "./receipt-image"
 import { ExchangeTypeBadge } from "./exchange-type-badge"
-import { iconMap, formatDate } from "./shared"
-import type { Transaction } from "@/lib/app-context"
+import { iconMap, formatDate, VALID_CATEGORIES, CATEGORY_ICON_MAP } from "./shared"
+import type { Transaction, TimeFilter } from "@/lib/app-context"
 
 const TX_PAGE = 6
 
@@ -55,6 +55,9 @@ interface TransactionListProps {
   openEdit: (tx: Transaction) => void
   onDelete: (tx: Transaction) => void
   lastModifiedTxId?: string | null
+  timeFilter: TimeFilter
+  totalTransactions: number
+  onCategoryChange: (tx: Transaction, category: string, icon: string) => void
 }
 
 export function TransactionList({
@@ -73,7 +76,11 @@ export function TransactionList({
   openEdit,
   onDelete,
   lastModifiedTxId,
+  timeFilter,
+  totalTransactions,
+  onCategoryChange,
 }: TransactionListProps) {
+  const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
 
   // Build flat list with date separators
   const items = useMemo<ListItem[]>(() => {
@@ -147,13 +154,31 @@ export function TransactionList({
           transition={{ duration: 0.3 }}
         >
           <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary">
-            <Wallet className="w-7 h-7 text-muted-foreground/40" />
+            {totalTransactions === 0
+              ? <Sparkles className="w-7 h-7 text-primary/50" />
+              : <Wallet className="w-7 h-7 text-muted-foreground/40" />
+            }
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Sin movimientos</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Registrá un gasto o ingreso usando<br />la barra de abajo
-            </p>
+            {totalTransactions === 0 ? (
+              <>
+                <p className="text-sm font-semibold text-foreground">¡Empezá a registrar!</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Escribí un gasto, tomá una foto<br />o grabá un audio con la barra de abajo
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-foreground">Sin movimientos{
+                  timeFilter === "week" ? " esta semana" :
+                  timeFilter === "month" ? " este mes" :
+                  timeFilter === "year" ? " este año" : " en el período"
+                }</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Probá cambiando el filtro de tiempo<br />o registrá un nuevo movimiento
+                </p>
+              </>
+            )}
           </div>
         </motion.div>
 
@@ -224,9 +249,20 @@ export function TransactionList({
                       className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 hover:bg-secondary/30 active:bg-secondary/50 transition-colors cursor-pointer text-left select-none"
                       onClick={() => { if (dragActiveRef.current) return; setExpandedTx(isExpanded ? null : tx.id) }}
                     >
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
-                        <Icon className={`w-5 h-5 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
-                      </div>
+                      <button
+                        type="button"
+                        className={`relative flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-transform active:scale-90 cursor-pointer group/icon ${isIncome ? "bg-primary/10" : "bg-secondary"} ${categoryPickerTxId === tx.id ? "ring-2 ring-primary/40" : ""}`}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (dragActiveRef.current) return
+                          setCategoryPickerTxId(categoryPickerTxId === tx.id ? null : tx.id)
+                        }}
+                        aria-label="Cambiar categoría"
+                      >
+                        <Icon className={`w-5 h-5 transition-opacity group-hover/icon:opacity-0 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
+                        <Pencil className="w-3.5 h-3.5 absolute opacity-0 group-hover/icon:opacity-100 transition-opacity text-muted-foreground" />
+                      </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
                         <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -277,6 +313,37 @@ export function TransactionList({
                       )}
                     </div>
                   </SwipeCard>
+
+                  {/* Category picker */}
+                  <AnimatePresence>
+                    {categoryPickerTxId === tx.id && (
+                      <motion.div
+                        className="mx-1 mt-1 mb-1 p-2 rounded-xl bg-secondary/60 border border-border flex flex-wrap gap-1.5"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {VALID_CATEGORIES.map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => {
+                              onCategoryChange(tx, cat, CATEGORY_ICON_MAP[cat] ?? "ShoppingCart")
+                              setCategoryPickerTxId(null)
+                            }}
+                            className={`px-3 py-1 text-xs rounded-lg border transition-colors cursor-pointer ${
+                              tx.category === cat
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-background border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Observation + Receipt expand */}
                   <AnimatePresence>

@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useApp } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 
@@ -92,6 +92,7 @@ export function ProfilePage() {
     .slice(0, 2)
     .join("")
     .toUpperCase() || "U"
+  const avatarUrl = user?.user_metadata?.picture || user?.user_metadata?.avatar_url || null
 
   return (
     <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
@@ -128,6 +129,7 @@ export function ProfilePage() {
           {/* Avatar */}
           <div className="flex flex-col items-center gap-2 mb-8">
             <Avatar className="w-16 h-16">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={localName} referrerPolicy="no-referrer" />}
               <AvatarFallback className="bg-primary text-primary-foreground text-xl font-bold">
                 {initials}
               </AvatarFallback>

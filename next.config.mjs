@@ -29,7 +29,7 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline'",   // Next.js App Router requires unsafe-inline
               "style-src 'self' 'unsafe-inline'",    // Tailwind inline styles
-              "img-src 'self' data: blob: https://*.supabase.co",
+              "img-src 'self' data: blob: https://*.supabase.co https://lh3.googleusercontent.com https://avatars.githubusercontent.com",
               "font-src 'self'",
               "media-src 'self' blob:",              // Audio recording playback
               // Allowed external API connections
