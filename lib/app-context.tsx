@@ -286,15 +286,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isOnline, user])
 
   // ── Data loaders ────────────────────────────────────────────────────────────
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (u: { id: string; user_metadata?: Record<string, string> }) => {
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", userId)
+      .eq("id", u.id)
       .single()
 
+    // Extract name from OAuth provider metadata as fallback
+    const oauthName: string =
+      u.user_metadata?.full_name ||
+      u.user_metadata?.name ||
+      u.user_metadata?.user_name ||
+      "Usuario"
+
     if (data) {
-      setUserName(data.user_name ?? "Usuario")
+      setUserName(data.user_name ?? oauthName)
       setMonthlyBudget(data.monthly_budget ?? 200000)
       setProfileMode(data.profile_mode ?? "standard")
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
@@ -304,6 +311,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setApiKeyClaude(data.api_key ?? "")
       setApiKeyOpenAI(data.api_key_openai ?? "")
       setApiKeyGemini(data.api_key_gemini ?? "")
+
+      // Persist OAuth name to DB if profile exists but has no name yet
+      if (!data.user_name && oauthName !== "Usuario") {
+        await supabase.from("profiles").update({ user_name: oauthName }).eq("id", u.id)
+      }
+    } else if (oauthName !== "Usuario") {
+      // First OAuth login — create profile row with the provider name
+      setUserName(oauthName)
+      await supabase.from("profiles").upsert({ id: u.id, user_name: oauthName })
     }
   }
 
@@ -326,7 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const u = session?.user ?? null
       setUser(u)
       if (u) {
-        Promise.all([loadProfile(u.id), loadTransactions(u.id)]).finally(() => {
+        Promise.all([loadProfile(u), loadTransactions(u.id)]).finally(() => {
           // Restore last authenticated view (survives tab discard / remount)
           const saved = sessionStorage.getItem("bb_view") as View | null
           const authenticatedViews: View[] = ["dashboard", "settings", "profile", "analytics"]
@@ -351,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const u = session?.user ?? null
       setUser(u)
       if (u) {
-        Promise.all([loadProfile(u.id), loadTransactions(u.id)]).then(() => {
+        Promise.all([loadProfile(u), loadTransactions(u.id)]).then(() => {
           // Only navigate to dashboard if we're on an unauthenticated view.
           // If the user is already on settings/analytics/profile/dashboard,
           // any auth event (SIGNED_IN, TOKEN_REFRESHED, etc.) must NOT redirect them.
