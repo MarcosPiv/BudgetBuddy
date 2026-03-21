@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Search, StickyNote, ShoppingCart, Wallet, Sparkles,
+  Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp,
 } from "lucide-react"
 // Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
@@ -58,6 +58,7 @@ interface TransactionListProps {
   timeFilter: TimeFilter
   totalTransactions: number
   onCategoryChange: (tx: Transaction, category: string, icon: string) => void
+  onImportCSV: () => void
 }
 
 export function TransactionList({
@@ -79,6 +80,7 @@ export function TransactionList({
   timeFilter,
   totalTransactions,
   onCategoryChange,
+  onImportCSV,
 }: TransactionListProps) {
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
 
@@ -119,6 +121,14 @@ export function TransactionList({
                 Deslizá para editar o eliminar
               </p>
             )}
+            <button
+              type="button"
+              onClick={onImportCSV}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+            >
+              <FileUp className="w-3.5 h-3.5" />
+              Importar CSV
+            </button>
           </div>
         </div>
 
@@ -166,6 +176,14 @@ export function TransactionList({
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   Escribí un gasto, tomá una foto<br />o grabá un audio con la barra de abajo
                 </p>
+                <button
+                  type="button"
+                  onClick={onImportCSV}
+                  className="mt-3 flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border hover:border-primary/40 hover:bg-primary/5 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer mx-auto"
+                >
+                  <FileUp className="w-3.5 h-3.5" />
+                  ¿Tenés un CSV del banco? Importalo
+                </button>
               </>
             ) : (
               <>

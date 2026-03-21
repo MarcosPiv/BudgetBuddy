@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown, FileUp,
+  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -812,15 +812,6 @@ export function DashboardPage() {
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
-                onClick={() => setShowImportCSV(true)}
-                aria-label="Importar CSV"
-              >
-                <FileUp className="w-5 h-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={() => setChatOpen(!chatOpen)}
                 aria-label="Chat"
               >
@@ -957,6 +948,7 @@ export function DashboardPage() {
               timeFilter={timeFilter}
               totalTransactions={transactions.length}
               onCategoryChange={(tx, category, icon) => updateTransaction(tx.id, { category, icon })}
+              onImportCSV={() => setShowImportCSV(true)}
             />
           </main>
 
