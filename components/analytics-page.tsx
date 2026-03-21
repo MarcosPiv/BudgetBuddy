@@ -24,11 +24,14 @@ import {
 import {
   LineChart,
   Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
   Legend,
   PieChart,
   Pie,
@@ -39,6 +42,8 @@ import type { Transaction } from "@/lib/app-context"
 import { Calendar } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
+import { ExpenseHeatmap } from "@/components/analytics/expense-heatmap"
+import { ShareSummary } from "@/components/analytics/share-summary"
 
 // ── Icon map ─────────────────────────────────────────────────────────────────
 const iconMap: Record<string, React.ElementType> = {
@@ -76,6 +81,32 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   )
 }
 
+// ── Daily projection tooltip ───────────────────────────────────────────────
+function DailyProjectionTooltip({ active, payload, label }: { active?: boolean; payload?: { dataKey: string; value: number; color: string }[]; label?: string }) {
+  if (!active || !payload?.length) return null
+  const real = payload.find(p => p.dataKey === "real")
+  const projected = payload.find(p => p.dataKey === "projected")
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
+      <p className="font-semibold text-foreground mb-1.5">Día {label}</p>
+      {real?.value != null && (
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: real.color }} />
+          <span className="text-muted-foreground">Acumulado:</span>
+          <span className="font-medium text-foreground tabular-nums">{fmtArs(real.value)}</span>
+        </div>
+      )}
+      {projected?.value != null && real?.value == null && (
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full shrink-0 opacity-55" style={{ background: projected.color }} />
+          <span className="text-muted-foreground">Proyectado:</span>
+          <span className="font-medium text-foreground tabular-nums">{fmtArs(projected.value)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const PIE_COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#a855f7", "#10b981", "#f97316"]
 
 // ── Pie tooltip ────────────────────────────────────────────────────────────────
@@ -94,7 +125,7 @@ type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
-  const { setView, transactions, addTransaction, updateTransaction, usdRate } = useApp()
+  const { setView, transactions, addTransaction, updateTransaction, usdRate, monthlyBudget, profileMode } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
 
@@ -502,6 +533,43 @@ export function AnalyticsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, usdRate])
 
+  // ── Daily projection chart data ───────────────────────────────────────────
+  const dailyProjectionData = useMemo(() => {
+    if (!projectionData) return null
+    const n = new Date()
+    const curMonth = n.getMonth()
+    const curYear = n.getFullYear()
+    const today = n.getDate()
+    const { daysInMonth, currentExpenses, projectedTotal, daysElapsed, remainingDays } = projectionData
+
+    const dailyMap = new Map<number, number>()
+    transactions.forEach(tx => {
+      const d = new Date(tx.date)
+      if (tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear) {
+        const day = d.getDate()
+        dailyMap.set(day, (dailyMap.get(day) ?? 0) + toArs(tx))
+      }
+    })
+
+    let cumulative = 0
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1
+      const isFuture = day > today
+      if (!isFuture) cumulative += dailyMap.get(day) ?? 0
+      const showLabel = day === 1 || day % 7 === 0 || day === today || day === daysInMonth
+      const projected =
+        day < today || remainingDays === 0 ? null
+        : Math.round(currentExpenses + (projectedTotal - currentExpenses) * (day - daysElapsed) / remainingDays)
+      return {
+        day,
+        label: showLabel ? String(day) : "",
+        real: isFuture ? null : Math.round(cumulative),
+        projected,
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, usdRate, projectionData])
+
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalRecurringArs = recurringTemplates
     .filter(t => t.type === "expense")
@@ -522,6 +590,14 @@ export function AnalyticsPage() {
         <div className="flex items-center gap-2 ml-1">
           <BarChart2 className="w-4 h-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">Analítica</span>
+        </div>
+        <div className="ml-auto">
+          <ShareSummary
+            transactions={transactions}
+            usdRate={usdRate}
+            monthlyBudget={monthlyBudget}
+            profileMode={profileMode}
+          />
         </div>
       </header>
 
@@ -589,6 +665,92 @@ export function AnalyticsPage() {
               Todavía no hay suficientes datos para mostrar la tendencia.
             </div>
           )}
+        </motion.div>
+
+        {/* ── Daily Projection Chart ───────────────────────────────── */}
+        {dailyProjectionData && (
+          <motion.div
+            className="rounded-2xl border border-border bg-card p-4"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.01 }}
+          >
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Gastos del mes · {MONTH_LABELS[now.getMonth()]}
+            </p>
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={dailyProjectionData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gradReal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={chartColors.expense} stopOpacity={0.18} />
+                    <stop offset="95%" stopColor={chartColors.expense} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={fmtArs}
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={54}
+                />
+                <Tooltip content={<DailyProjectionTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="real"
+                  stroke={chartColors.expense}
+                  strokeWidth={2}
+                  fill="url(#gradReal)"
+                  dot={false}
+                  activeDot={{ r: 4, fill: chartColors.expense }}
+                  connectNulls={false}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="projected"
+                  stroke={chartColors.expense}
+                  strokeWidth={2}
+                  strokeDasharray="5 4"
+                  strokeOpacity={0.5}
+                  fill="none"
+                  dot={false}
+                  activeDot={{ r: 4, fill: chartColors.expense }}
+                  connectNulls={false}
+                />
+                <ReferenceLine
+                  y={projectionData.projectedTotal}
+                  stroke={chartColors.expense}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.35}
+                  label={{
+                    value: fmtArs(projectionData.projectedTotal),
+                    position: "insideTopRight",
+                    fontSize: 10,
+                    fill: "var(--muted-foreground)",
+                    dy: -4,
+                  }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </motion.div>
+        )}
+
+        {/* ── Expense Heatmap Calendar ─────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.02 }}
+        >
+          <ExpenseHeatmap
+            transactions={transactions}
+            usdRate={usdRate}
+          />
         </motion.div>
 
         {/* ── Spending Projection ──────────────────────────────────── */}

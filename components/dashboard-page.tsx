@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown,
+  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown, FileUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -24,6 +24,7 @@ import { MagicBar } from "./dashboard/magic-bar"
 import { ChatPanel } from "./dashboard/chat-panel"
 import { EditDialog, type EditForm } from "./dashboard/edit-dialog"
 import { CameraModal } from "./dashboard/camera-modal"
+import { ImportCsvModal } from "./dashboard/import-csv-modal"
 import { toast } from "sonner"
 
 // Shared utilities
@@ -86,6 +87,9 @@ export function DashboardPage() {
 
   // ── Chat panel open/closed ───────────────────────────────────────────────────
   const [chatOpen, setChatOpen] = useState(false)
+
+  // ── CSV import ───────────────────────────────────────────────────────────────
+  const [showImportCSV, setShowImportCSV] = useState(false)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -808,6 +812,15 @@ export function DashboardPage() {
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={() => setShowImportCSV(true)}
+                aria-label="Importar CSV"
+              >
+                <FileUp className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={() => setChatOpen(!chatOpen)}
                 aria-label="Chat"
               >
@@ -1007,6 +1020,9 @@ export function DashboardPage() {
           onManualEntry={() => openManualEntry()}
         />
 
+
+        {/* CSV Import */}
+        <ImportCsvModal open={showImportCSV} onClose={() => setShowImportCSV(false)} />
 
         {/* Edit existing transaction */}
         <EditDialog

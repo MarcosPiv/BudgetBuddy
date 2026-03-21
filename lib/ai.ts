@@ -724,6 +724,53 @@ async function callTextAI(provider: AIProvider, apiKey: string, systemPrompt: st
   return (await r.json()).candidates?.[0]?.content?.parts?.[0]?.text ?? ""
 }
 
+// ── CSV column mapping ────────────────────────────────────────────────────────
+
+export interface CSVMapping {
+  dateCol: number
+  descCol: number
+  amountCol: number | null      // single signed amount column
+  debitCol: number | null       // separate debit/expense column
+  creditCol: number | null      // separate credit/income column
+  dateFormat: "dd/mm/yyyy" | "yyyy-mm-dd" | "mm/dd/yyyy" | "dd-mm-yyyy"
+}
+
+/** Uses AI to identify column mapping from CSV headers + sample rows. */
+export async function callAICSVMapping(
+  provider: AIProvider,
+  apiKey: string,
+  headers: string[],
+  sampleRows: string[][]
+): Promise<CSVMapping | null> {
+  const userContent = `Cabeceras: ${JSON.stringify(headers)}
+Filas de muestra:
+${sampleRows.slice(0, 3).map(r => JSON.stringify(r)).join("\n")}
+
+Devolvé ÚNICAMENTE JSON (sin markdown):
+{"dateCol":0,"descCol":1,"amountCol":2,"debitCol":null,"creditCol":null,"dateFormat":"dd/mm/yyyy"}`
+
+  try {
+    const raw = await callTextAI(
+      provider, apiKey,
+      "Analizás CSVs de bancos argentinos. Identificás columnas de fecha, descripción y montos. Respondé SOLO JSON válido.",
+      userContent
+    )
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const p = JSON.parse(m[0])
+    return {
+      dateCol: p.dateCol ?? 0,
+      descCol: p.descCol ?? 1,
+      amountCol: typeof p.amountCol === "number" ? p.amountCol : null,
+      debitCol: typeof p.debitCol === "number" ? p.debitCol : null,
+      creditCol: typeof p.creditCol === "number" ? p.creditCol : null,
+      dateFormat: p.dateFormat ?? "dd/mm/yyyy",
+    }
+  } catch {
+    return null
+  }
+}
+
 const UPDATE_DETECT_PROMPT = `Analizá el mensaje e interpretalo como una instrucción para MODIFICAR una transacción financiera existente.
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown.
