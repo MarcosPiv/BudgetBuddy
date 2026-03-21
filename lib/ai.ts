@@ -742,9 +742,15 @@ export async function callAICSVMapping(
   headers: string[],
   sampleRows: string[][]
 ): Promise<CSVMapping | null> {
-  const userContent = `Cabeceras: ${JSON.stringify(headers)}
+  // Truncate before sending — limits prompt injection surface via crafted CSV values.
+  // 12 columns max, header names ≤ 40 chars, cell values ≤ 60 chars.
+  const safeHeaders = headers.slice(0, 12).map(h => String(h).slice(0, 40))
+  const safeRows = sampleRows.slice(0, 3).map(r =>
+    r.slice(0, 12).map(c => String(c).slice(0, 60))
+  )
+  const userContent = `Cabeceras: ${JSON.stringify(safeHeaders)}
 Filas de muestra:
-${sampleRows.slice(0, 3).map(r => JSON.stringify(r)).join("\n")}
+${safeRows.map(r => JSON.stringify(r)).join("\n")}
 
 Devolvé ÚNICAMENTE JSON (sin markdown):
 {"dateCol":0,"descCol":1,"amountCol":2,"debitCol":null,"creditCol":null,"dateFormat":"dd/mm/yyyy"}`
