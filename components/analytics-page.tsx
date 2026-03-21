@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowLeft,
   BarChart2,
+  Loader2,
   RefreshCw,
   Repeat,
   ShoppingCart,
@@ -125,7 +126,7 @@ type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
-  const { setView, transactions, addTransaction, updateTransaction, usdRate, monthlyBudget, profileMode } = useApp()
+  const { setView, transactions, addTransaction, updateTransaction, usdRate, monthlyBudget, profileMode, isLoadingHistory, hasMoreTransactions, loadMoreTransactions } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
 
@@ -341,6 +342,12 @@ export function AnalyticsPage() {
     const destructive = style.getPropertyValue("--destructive").trim()
     if (primary) setChartColors(c => ({ ...c, income: primary }))
     if (destructive) setChartColors(c => ({ ...c, expense: destructive }))
+  }, [])
+
+  // Phase 2: auto-load older transactions on mount
+  useEffect(() => {
+    if (hasMoreTransactions) loadMoreTransactions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const toArs = (tx: Transaction) =>
@@ -590,6 +597,12 @@ export function AnalyticsPage() {
         <div className="flex items-center gap-2 ml-1">
           <BarChart2 className="w-4 h-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">Analítica</span>
+          {isLoadingHistory && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1 ml-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Cargando historial...
+            </span>
+          )}
         </div>
         <div className="ml-auto">
           <ShareSummary

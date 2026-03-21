@@ -60,6 +60,9 @@ export function DashboardPage() {
     setCustomRange,
     isOnline,
     pendingOfflineCount,
+    isLoadingHistory,
+    hasMoreTransactions,
+    loadMoreTransactions,
   } = useApp()
 
   // ── Magic Bar state ──────────────────────────────────────────────────────────
@@ -304,6 +307,14 @@ export function DashboardPage() {
   useEffect(() => {
     return () => { streamRef.current?.getTracks().forEach((t) => t.stop()) }
   }, [])
+
+  // Load full history when user switches to year or custom filter
+  useEffect(() => {
+    if ((timeFilter === "year" || timeFilter === "custom") && hasMoreTransactions) {
+      loadMoreTransactions()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter])
 
   // ── Magic Bar handlers ───────────────────────────────────────────────────────
   const getAppliedRate = (): number => {
@@ -949,6 +960,9 @@ export function DashboardPage() {
               totalTransactions={transactions.length}
               onCategoryChange={(tx, category, icon) => updateTransaction(tx.id, { category, icon })}
               onImportCSV={() => setShowImportCSV(true)}
+              isLoadingHistory={isLoadingHistory}
+              hasMoreTransactions={hasMoreTransactions}
+              onLoadMoreHistory={loadMoreTransactions}
             />
           </main>
 

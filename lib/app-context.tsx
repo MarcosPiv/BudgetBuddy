@@ -91,6 +91,10 @@ interface AppState {
   // Offline
   isOnline: boolean
   pendingOfflineCount: number
+  // History loading
+  isLoadingHistory: boolean
+  hasMoreTransactions: boolean
+  loadMoreTransactions: () => Promise<void>
   // AI Provider
   aiProvider: AIProvider
   setAiProvider: (p: AIProvider) => void
@@ -218,6 +222,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
   const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => loadQueue().length)
 
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false)
+  const historyCutoffRef = useRef<string | null>(null)
+
   // AI provider state
   const [aiProvider, setAiProvider] = useState<AIProvider>("claude")
   const [apiKeyClaude, setApiKeyClaude] = useState("")
@@ -334,14 +342,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const loadTransactions = async (userId: string) => {
-    const { data } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("date", { ascending: false })
+    const cutoff = new Date()
+    cutoff.setMonth(cutoff.getMonth() - 6)
+    cutoff.setHours(0, 0, 0, 0)
+    const cutoffStr = cutoff.toISOString().split("T")[0]
+    historyCutoffRef.current = cutoffStr
 
-    if (data) {
-      setTransactions(data.map(mapTransaction))
+    const [recentResult, olderCountResult] = await Promise.all([
+      supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("date", cutoffStr)
+        .order("date", { ascending: false }),
+      supabase
+        .from("transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .lt("date", cutoffStr),
+    ])
+
+    if (recentResult.data) {
+      setTransactions(recentResult.data.map(mapTransaction))
+    }
+    setHasMoreTransactions((olderCountResult.count ?? 0) > 0)
+  }
+
+  const loadMoreTransactions = async () => {
+    const cutoff = historyCutoffRef.current
+    if (!user || !hasMoreTransactions || isLoadingHistory || !cutoff) return
+    setIsLoadingHistory(true)
+    try {
+      const { data } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .lt("date", cutoff)
+        .order("date", { ascending: false })
+
+      if (data && data.length > 0) {
+        setTransactions(prev => {
+          const ids = new Set(prev.map(t => t.id))
+          return [...prev, ...data.map(mapTransaction).filter(t => !ids.has(t.id))]
+        })
+      }
+      setHasMoreTransactions(false)
+    } finally {
+      setIsLoadingHistory(false)
     }
   }
 
@@ -411,6 +458,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setApiKeyClaude("")
     setApiKeyOpenAI("")
     setApiKeyGemini("")
+    setHasMoreTransactions(false)
+    setIsLoadingHistory(false)
+    historyCutoffRef.current = null
     setView("landing", true)
     // Fire-and-forget — onAuthStateChange will handle any remaining cleanup
     supabase.auth.signOut()
@@ -582,6 +632,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsProcessing,
     isOnline,
     pendingOfflineCount,
+    isLoadingHistory,
+    hasMoreTransactions,
+    loadMoreTransactions,
     aiProvider,
     setAiProvider,
     apiKeyClaude,
@@ -608,7 +661,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCustomRange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [user, loadingAuth, isPasswordRecovery, currentView, navDirection, transactions, isProcessing,
-       isOnline, pendingOfflineCount,
+       isOnline, pendingOfflineCount, isLoadingHistory, hasMoreTransactions,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
        monthlyBudget, profileMode, usdRate, exchangeRateMode, timeFilter, customRange])
 

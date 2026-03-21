@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp,
+  Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp, Loader2,
 } from "lucide-react"
 // Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
@@ -59,6 +59,9 @@ interface TransactionListProps {
   totalTransactions: number
   onCategoryChange: (tx: Transaction, category: string, icon: string) => void
   onImportCSV: () => void
+  isLoadingHistory?: boolean
+  hasMoreTransactions?: boolean
+  onLoadMoreHistory?: () => void
 }
 
 export function TransactionList({
@@ -81,6 +84,9 @@ export function TransactionList({
   totalTransactions,
   onCategoryChange,
   onImportCSV,
+  isLoadingHistory,
+  hasMoreTransactions,
+  onLoadMoreHistory,
 }: TransactionListProps) {
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
 
@@ -405,6 +411,23 @@ export function TransactionList({
                   Ver {displayedTransactions.length - TX_PAGE} movimientos más
                 </>
               )}
+            </button>
+          )}
+
+          {/* Phase 2 history loading */}
+          {isLoadingHistory && (
+            <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Cargando transacciones anteriores...
+            </div>
+          )}
+          {!isLoadingHistory && hasMoreTransactions && !hasMoreTx && (
+            <button
+              type="button"
+              onClick={onLoadMoreHistory}
+              className="w-full py-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Cargar transacciones anteriores
             </button>
           )}
         </div>
