@@ -116,7 +116,9 @@ services:
   # ============================================================
 
   eureka-server:
-    build: ./microservices/eureka-server
+    build:
+      context: ./microservices
+      dockerfile: eureka-server/Dockerfile
     container_name: bb-eureka
     ports:
       - "8761:8761"
@@ -135,9 +137,13 @@ services:
   # ============================================================
 
   auth-service:
-    build: ./microservices/auth-service
+    build:
+      context: ./microservices
+      dockerfile: auth-service/Dockerfile
     container_name: bb-auth
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: budgetbuddy
       AUTH_DB_USER: ${AUTH_DB_USER}
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
@@ -164,9 +170,13 @@ services:
       retries: 5
 
   transaction-service:
-    build: ./microservices/transaction-service
+    build:
+      context: ./microservices
+      dockerfile: transaction-service/Dockerfile
     container_name: bb-transactions
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: budgetbuddy
       TXN_DB_USER: ${TXN_DB_USER}
       TXN_DB_PASSWORD: ${TXN_DB_PASSWORD}
       RABBITMQ_HOST: rabbitmq
@@ -191,9 +201,12 @@ services:
         condition: service_healthy
 
   ai-service:
-    build: ./microservices/ai-service
+    build:
+      context: ./microservices
+      dockerfile: ai-service/Dockerfile
     container_name: bb-ai
     environment:
+      MONGO_HOST: mongodb
       MONGO_USER: ${MONGO_APP_USER}
       MONGO_PASSWORD: ${MONGO_APP_PASSWORD}
       RABBITMQ_HOST: rabbitmq
@@ -218,7 +231,9 @@ services:
   # ============================================================
 
   api-gateway:
-    build: ./microservices/api-gateway
+    build:
+      context: ./microservices
+      dockerfile: api-gateway/Dockerfile
     container_name: bb-gateway
     environment:
       JWT_SECRET: ${JWT_SECRET}
