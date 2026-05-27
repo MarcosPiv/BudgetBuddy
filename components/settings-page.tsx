@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Fingerprint,
   Landmark,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,6 +95,8 @@ export function SettingsPage() {
     setExchangeRateMode,
     defaultAccount,
     setDefaultAccount,
+    myAccounts,
+    setMyAccounts,
     saveProfile,
   } = useApp()
 
@@ -105,10 +108,9 @@ export function SettingsPage() {
   const [localKeysGemini, setLocalKeysGemini] = useState(apiKeyGemini)
   const [localUsdRate, setLocalUsdRate] = useState(usdRate.toString())
   const [localExMode, setLocalExMode] = useState<ExchangeRateMode>(exchangeRateMode)
+  const [localMyAccounts, setLocalMyAccounts] = useState<string[]>(myAccounts)
   const [localDefaultAccount, setLocalDefaultAccount] = useState(defaultAccount)
-  const [customAccountInput, setCustomAccountInput] = useState(
-    PAYMENT_ACCOUNTS.find(a => a.name === defaultAccount) ? "" : defaultAccount === "Efectivo" ? "" : defaultAccount
-  )
+  const [defaultAccountOpen, setDefaultAccountOpen] = useState(false)
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
@@ -222,8 +224,11 @@ export function SettingsPage() {
       if (active?.venta) newRate = active.venta
     }
 
-    // Resolve final default account (custom text wins if provided)
-    const finalDefaultAccount = customAccountInput.trim() || localDefaultAccount
+    // Resolve accounts: ensure at least one account, and default is in the list
+    const finalMyAccounts = localMyAccounts.length > 0 ? localMyAccounts : ["Efectivo"]
+    const finalDefaultAccount = finalMyAccounts.includes(localDefaultAccount)
+      ? localDefaultAccount
+      : finalMyAccounts[0]
 
     // Update context state
     setAiProvider(localProvider)
@@ -232,6 +237,7 @@ export function SettingsPage() {
     setApiKeyGemini(localKeysGemini)
     setExchangeRateMode(localExMode)
     setUsdRate(newRate)
+    setMyAccounts(finalMyAccounts)
     setDefaultAccount(finalDefaultAccount)
 
     // Pass fresh values to avoid stale-closure bug
@@ -242,6 +248,7 @@ export function SettingsPage() {
       apiKeyGemini: localKeysGemini,
       exchangeRateMode: localExMode,
       usdRate: newRate,
+      myAccounts: finalMyAccounts,
       defaultAccount: finalDefaultAccount,
     })
 
@@ -360,14 +367,14 @@ export function SettingsPage() {
               </div>
             )}
 
-            {/* ── Cuenta predeterminada ────────────────────────── */}
+            {/* ── Mis cuentas ────────────────────────── */}
             <div className="flex flex-col gap-3">
               <Label className="text-sm text-muted-foreground flex items-center gap-2">
                 <Landmark className="w-3.5 h-3.5" />
-                Cuenta predeterminada
+                Mis cuentas
               </Label>
               <p className="text-xs text-muted-foreground -mt-1">
-                Se asigna automáticamente cuando no se detecta ningún banco en el movimiento.
+                Seleccioná las cuentas y billeteras que usás habitualmente.
               </p>
 
               {ACCOUNT_CATEGORIES.map(cat => {
@@ -376,38 +383,85 @@ export function SettingsPage() {
                   <div key={cat} className="flex flex-col gap-1.5">
                     <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">{cat}</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {items.map(acc => (
-                        <button
-                          key={acc.id}
-                          type="button"
-                          onClick={() => { setLocalDefaultAccount(acc.name); setCustomAccountInput("") }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-                            localDefaultAccount === acc.name && !customAccountInput.trim()
-                              ? "border-primary bg-primary/10 text-foreground"
-                              : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
-                          }`}
-                        >
-                          {acc.name}
-                        </button>
-                      ))}
+                      {items.map(acc => {
+                        const isSelected = localMyAccounts.includes(acc.name)
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                if (localMyAccounts.length <= 1) return
+                                const next = localMyAccounts.filter(n => n !== acc.name)
+                                setLocalMyAccounts(next)
+                                if (localDefaultAccount === acc.name) setLocalDefaultAccount(next[0])
+                              } else {
+                                setLocalMyAccounts(prev => [...prev, acc.name])
+                                if (!localDefaultAccount) setLocalDefaultAccount(acc.name)
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
+                              isSelected
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 text-primary shrink-0" />}
+                            {acc.name}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )
               })}
+            </div>
 
-              {/* Custom account */}
-              <div className="flex flex-col gap-1.5 mt-1">
-                <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Otra</p>
-                <Input
-                  type="text"
-                  placeholder="Nombre de tu cuenta o banco..."
-                  value={customAccountInput}
-                  onChange={e => {
-                    setCustomAccountInput(e.target.value)
-                    if (e.target.value.trim()) setLocalDefaultAccount("")
-                  }}
-                  className="h-10 text-sm bg-secondary/50 border-border"
-                />
+            {/* ── Cuenta predeterminada ────────────────────────── */}
+            <div className="flex flex-col gap-2">
+              <Label className="text-sm text-muted-foreground">
+                Cuenta predeterminada
+              </Label>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Se usa cuando no se detecta ninguna cuenta en el movimiento.
+              </p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDefaultAccountOpen(v => !v)}
+                  className="w-full flex items-center justify-between h-10 px-3 rounded-lg bg-secondary/50 border border-border text-sm cursor-pointer hover:bg-secondary/70 transition-colors"
+                >
+                  <span className={localDefaultAccount ? "text-foreground" : "text-muted-foreground/50"}>
+                    {localDefaultAccount || "Seleccionar cuenta..."}
+                  </span>
+                  <motion.div animate={{ rotate: defaultAccountOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  </motion.div>
+                </button>
+                <AnimatePresence>
+                  {defaultAccountOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full mt-1 left-0 right-0 z-20 bg-card border border-border rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto"
+                    >
+                      {localMyAccounts.map(acc => (
+                        <button
+                          key={acc}
+                          type="button"
+                          onClick={() => { setLocalDefaultAccount(acc); setDefaultAccountOpen(false) }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer hover:bg-secondary ${
+                            localDefaultAccount === acc ? "text-primary font-semibold bg-primary/5" : "text-foreground"
+                          }`}
+                        >
+                          {acc}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 

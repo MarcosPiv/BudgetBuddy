@@ -196,6 +196,11 @@ Cuándo separar en MÚLTIPLES transacciones:
   * "gasté 3000 en el super de Palermo" → un solo gasto con contexto adicional
   * "almorcé y tomé café todo por 1200" → un solo gasto`
 
+function buildTransactionPrompt(myAccounts?: string[]): string {
+  if (!myAccounts || myAccounts.length === 0) return SYSTEM_PROMPT
+  return SYSTEM_PROMPT + `\n\nCuentas del usuario (el campo account DEBE ser exactamente uno de estos valores cuando se mencione explícitamente, caso contrario omitir): ${myAccounts.join(", ")}`
+}
+
 function buildChatSystemPrompt(context: string): string {
   // Sanitize context: strip HTML tags and lines that look like injected instructions.
   // The context is generated from user transaction data (descriptions, categories) which
@@ -406,7 +411,7 @@ export async function transcribeAudioAttachment(
 }
 
 // ── Claude (Anthropic) ────────────────────────────────────────────────────────
-async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
+async function callClaude(apiKey: string, input: string, attachments?: AIAttachment[], systemPrompt = SYSTEM_PROMPT): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("claude", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
@@ -450,7 +455,7 @@ async function callClaude(apiKey: string, input: string, attachments?: AIAttachm
     body: JSON.stringify({
       model: "claude-3-5-haiku-20241022",
       max_tokens: 400,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
     }),
   })
@@ -499,7 +504,7 @@ async function callClaudeChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
-async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
+async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachment[], systemPrompt = SYSTEM_PROMPT): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("openai", apiKey)
   const images = attachments?.filter(a => a.type === "image") ?? []
   const audios = attachments?.filter(a => a.type === "audio") ?? []
@@ -536,7 +541,7 @@ async function callOpenAI(apiKey: string, input: string, attachments?: AIAttachm
       max_tokens: 400,
       temperature: 0.1,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
       ],
     }),
@@ -592,7 +597,7 @@ async function callOpenAIChat(apiKey: string, context: string, history: ChatTurn
 }
 
 // ── Gemini (Google) ───────────────────────────────────────────────────────────
-async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[]): Promise<ParsedTransaction | ParsedTransaction[]> {
+async function callGemini(apiKey: string, input: string, attachments?: AIAttachment[], systemPrompt = SYSTEM_PROMPT): Promise<ParsedTransaction | ParsedTransaction[]> {
   validateKeyFormat("gemini", apiKey)
   const parts: object[] = []
 
@@ -612,7 +617,7 @@ async function callGemini(apiKey: string, input: string, attachments?: AIAttachm
         "x-goog-api-key": apiKey,  // key in header, not URL — prevents logging in proxy/CDN/DevTools history
       },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts }],
         generationConfig: {
           maxOutputTokens: 400,
@@ -818,14 +823,16 @@ export async function callAI(
   provider: AIProvider,
   apiKey: string,
   input: string,
-  attachments?: AIAttachment[]
+  attachments?: AIAttachment[],
+  myAccounts?: string[]
 ): Promise<ParsedTransaction | ParsedTransaction[]> {
   // Sanitize input — throws immediately on injection attempt
   const safeInput = sanitizeUserInput(input)
+  const systemPrompt = buildTransactionPrompt(myAccounts)
   try {
-    if (provider === "claude") return await callClaude(apiKey, safeInput, attachments)
-    if (provider === "openai") return await callOpenAI(apiKey, safeInput, attachments)
-    return await callGemini(apiKey, safeInput, attachments)
+    if (provider === "claude") return await callClaude(apiKey, safeInput, attachments, systemPrompt)
+    if (provider === "openai") return await callOpenAI(apiKey, safeInput, attachments, systemPrompt)
+    return await callGemini(apiKey, safeInput, attachments, systemPrompt)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido."
     throw new Error(translateError(msg))

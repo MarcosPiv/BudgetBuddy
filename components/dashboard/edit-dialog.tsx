@@ -1,7 +1,7 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { TrendingUp, TrendingDown, Repeat, DollarSign } from "lucide-react"
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Landmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,7 @@ export interface EditForm {
   manualRate: string
   observation: string
   isRecurring: boolean
+  account?: string
 }
 
 interface RateOption {
@@ -45,6 +46,7 @@ interface EditDialogProps {
   usdRate: number
   onSave: () => void
   getEditRate: () => number
+  myAccounts?: string[]
 }
 
 export function EditDialog({
@@ -60,6 +62,7 @@ export function EditDialog({
   usdRate,
   onSave,
   getEditRate,
+  myAccounts,
 }: EditDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -271,6 +274,30 @@ export function EditDialog({
               placeholder="Ej: Incluye propina, cuotas, detalles..."
             />
           </div>
+
+          {/* Account */}
+          {myAccounts && myAccounts.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Landmark className="w-3 h-3" />
+                Cuenta (opcional)
+              </Label>
+              <Select
+                value={editForm.account ?? "__auto__"}
+                onValueChange={(val) => setEditForm(f => ({ ...f, account: val === "__auto__" ? undefined : val }))}
+              >
+                <SelectTrigger className="bg-secondary/50 border-border h-10 text-sm">
+                  <SelectValue placeholder="Detectar automáticamente" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  <SelectItem value="__auto__" className="text-sm text-muted-foreground/70">Detectar automáticamente</SelectItem>
+                  {myAccounts.map(acc => (
+                    <SelectItem key={acc} value={acc} className="text-sm">{acc}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Recurring toggle */}
           <div className="flex items-center justify-between py-1">

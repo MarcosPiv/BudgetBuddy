@@ -61,6 +61,7 @@ interface ChatHandlerParams {
   aiProvider: AIProvider
   usdRate: number
   defaultAccount: string
+  myAccounts: string[]
   liveRates: ExchangeRates
   newExRateType: ExchangeRateType
   formatCurrency: (n: number) => string
@@ -85,6 +86,7 @@ export function useChatHandler({
   aiProvider,
   usdRate,
   defaultAccount,
+  myAccounts,
   liveRates,
   newExRateType,
   formatCurrency,
@@ -518,7 +520,7 @@ export function useChatHandler({
     if (apiKey.trim() && /\d/.test(userMsg)) {
       setIsChatProcessing(true)
       try {
-        const aiResult = await callAI(aiProvider, apiKey, userMsg)
+        const aiResult = await callAI(aiProvider, apiKey, userMsg, undefined, myAccounts)
         const results = Array.isArray(aiResult) ? aiResult : [aiResult]
         const valid = results.filter(r => r.type !== "unknown")
         if (valid.length > 0) {
@@ -548,7 +550,7 @@ export function useChatHandler({
             }
             const chatDetectedAccount =
               result.account ||
-              detectAccountFromText(userMsg) ||
+              detectAccountFromText(userMsg, myAccounts) ||
               defaultAccount
 
             addTransactionRef.current({

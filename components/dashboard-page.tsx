@@ -52,6 +52,7 @@ export function DashboardPage() {
     signOut,
     userName,
     defaultAccount,
+    myAccounts,
     usdRate,
     apiKey,
     aiProvider,
@@ -97,6 +98,7 @@ export function DashboardPage() {
 
   // ── Accounts modal ───────────────────────────────────────────────────────────
   const [showAccountsModal, setShowAccountsModal] = useState(false)
+  const [selectedMagicAccount, setSelectedMagicAccount] = useState<string | null>(null)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -334,6 +336,7 @@ export function DashboardPage() {
       manualRate: newManualRate,
       observation: "",
       isRecurring: false,
+      account: selectedMagicAccount || defaultAccount,
     })
     setShowManualEntry(true)
   }
@@ -354,6 +357,7 @@ export function DashboardPage() {
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
       isRecurring: editForm.isRecurring,
+      account: editForm.account || defaultAccount,
     }, (msg) => {
       setAiError(msg)
       setTimeout(() => setAiError(null), 5000)
@@ -396,6 +400,7 @@ export function DashboardPage() {
     setObservation("")
     setShowObservation(false)
     setNewTxDate(null)
+    setSelectedMagicAccount(null)
 
     try {
       const aiAttachments: AIAttachment[] = await Promise.all(
@@ -408,7 +413,7 @@ export function DashboardPage() {
       )
 
       const aiResult = await Promise.race([
-        callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined),
+        callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined, myAccounts),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("La IA tardó demasiado. Revisá tu conexión e intentá de nuevo.")), 30_000)
         ),
@@ -484,10 +489,11 @@ export function DashboardPage() {
           }
         }
 
-        // Account: AI-detected > client-side keyword match > user's default account
+        // Account: manual override > AI-detected > keyword match against user's accounts > default
         const detectedAccount =
+          selectedMagicAccount ||
           result.account ||
-          detectAccountFromText(textInput) ||
+          detectAccountFromText(textInput, myAccounts) ||
           defaultAccount
 
         addTransaction({
@@ -696,6 +702,7 @@ export function DashboardPage() {
     aiProvider,
     usdRate,
     defaultAccount,
+    myAccounts,
     liveRates,
     newExRateType,
     formatCurrency,
@@ -717,6 +724,7 @@ export function DashboardPage() {
       manualRate: tx.txRate ? String(tx.txRate) : "",
       observation: tx.observation ?? "",
       isRecurring: tx.isRecurring ?? false,
+      account: tx.account,
     })
   }
 
@@ -743,6 +751,7 @@ export function DashboardPage() {
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
       isRecurring: editForm.isRecurring,
+      account: editForm.account || undefined,
     }, (msg) => {
       setAiError(msg)
       setTimeout(() => setAiError(null), 5000)
@@ -1033,6 +1042,9 @@ export function DashboardPage() {
           stopRecording={stopRecording}
           aiError={aiError}
           onManualEntry={() => openManualEntry()}
+          myAccounts={myAccounts}
+          selectedAccount={selectedMagicAccount}
+          onSelectAccount={setSelectedMagicAccount}
         />
 
 
@@ -1061,6 +1073,7 @@ export function DashboardPage() {
           usdRate={usdRate}
           onSave={handleSaveEdit}
           getEditRate={getEditRate}
+          myAccounts={myAccounts}
         />
 
         {/* Manual new transaction (no-AI / offline) */}
@@ -1076,6 +1089,7 @@ export function DashboardPage() {
           usdRate={usdRate}
           onSave={handleSaveNew}
           getEditRate={getEditRate}
+          myAccounts={myAccounts}
         />
 
         <CameraModal

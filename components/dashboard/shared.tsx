@@ -102,9 +102,12 @@ export const ACCOUNT_CATEGORIES = [
 ]
 
 /** Client-side keyword detection — returns account name or undefined */
-export function detectAccountFromText(text: string): string | undefined {
+export function detectAccountFromText(text: string, myAccounts?: string[]): string | undefined {
   const lower = " " + text.toLowerCase() + " "
-  for (const acc of PAYMENT_ACCOUNTS) {
+  const pool = (myAccounts && myAccounts.length > 0)
+    ? PAYMENT_ACCOUNTS.filter(a => myAccounts.includes(a.name))
+    : PAYMENT_ACCOUNTS
+  for (const acc of pool) {
     if (acc.keywords.some(kw => lower.includes(" " + kw) || lower.includes(kw + " ") || lower.includes(kw + ","))) {
       return acc.name
     }

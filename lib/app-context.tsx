@@ -113,6 +113,8 @@ interface AppState {
   setUserName: (name: string) => void
   defaultAccount: string
   setDefaultAccount: (account: string) => void
+  myAccounts: string[]
+  setMyAccounts: (accounts: string[]) => void
   usdRate: number
   setUsdRate: (n: number) => void
   exchangeRateMode: ExchangeRateMode
@@ -120,6 +122,7 @@ interface AppState {
   saveProfile: (overrides?: {
     userName?: string
     defaultAccount?: string
+    myAccounts?: string[]
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -239,6 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [userName, setUserName] = useState("Usuario")
   const [defaultAccount, setDefaultAccount] = useState("Efectivo")
+  const [myAccounts, setMyAccounts] = useState<string[]>(["Efectivo"])
   const [usdRate, setUsdRate] = useState(1350)
   const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
 
@@ -319,6 +323,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const effectiveName = hasRealName ? data.user_name : oauthName
       setUserName(effectiveName)
       setDefaultAccount(data.default_account ?? "Efectivo")
+      try {
+        const parsed = data.my_accounts ? JSON.parse(data.my_accounts) : null
+        setMyAccounts(Array.isArray(parsed) && parsed.length > 0 ? parsed : ["Efectivo"])
+      } catch {
+        setMyAccounts(["Efectivo"])
+      }
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
       setUsdRate(data.usd_rate ?? 1350)
       setAiProvider((data.ai_provider as AIProvider) ?? "claude")
@@ -589,6 +599,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const saveProfile = async (overrides?: {
     userName?: string
     defaultAccount?: string
+    myAccounts?: string[]
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -601,6 +612,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: user.id,
       user_name: overrides?.userName ?? userName,
       default_account: overrides?.defaultAccount ?? defaultAccount,
+      my_accounts: JSON.stringify(overrides?.myAccounts ?? myAccounts),
       exchange_rate_mode: overrides?.exchangeRateMode ?? exchangeRateMode,
       usd_rate: overrides?.usdRate ?? usdRate,
       ai_provider: overrides?.aiProvider ?? aiProvider,
@@ -645,6 +657,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUserName,
     defaultAccount,
     setDefaultAccount,
+    myAccounts,
+    setMyAccounts,
     usdRate,
     setUsdRate,
     exchangeRateMode,
@@ -658,7 +672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }), [user, loadingAuth, isPasswordRecovery, currentView, navDirection, transactions, isProcessing,
        isOnline, pendingOfflineCount, isLoadingHistory, hasMoreTransactions,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
-       defaultAccount, usdRate, exchangeRateMode, timeFilter, customRange])
+       defaultAccount, myAccounts, usdRate, exchangeRateMode, timeFilter, customRange])
 
   return (
     <AppContext.Provider value={contextValue}>
