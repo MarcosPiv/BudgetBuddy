@@ -5,7 +5,6 @@ import { type User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 
 export type View = "landing" | "auth" | "settings" | "dashboard" | "profile" | "analytics"
-export type ProfileMode = "standard" | "expenses_only"
 export type TimeFilter = "week" | "month" | "year" | "custom"
 export type ExchangeRateMode = "api" | "manual"
 export type ExchangeRateType = "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL"
@@ -109,18 +108,12 @@ interface AppState {
   // Profile
   userName: string
   setUserName: (name: string) => void
-  monthlyBudget: number
-  setMonthlyBudget: (n: number) => void
-  profileMode: ProfileMode
-  setProfileMode: (mode: ProfileMode) => void
   usdRate: number
   setUsdRate: (n: number) => void
   exchangeRateMode: ExchangeRateMode
   setExchangeRateMode: (mode: ExchangeRateMode) => void
   saveProfile: (overrides?: {
     userName?: string
-    monthlyBudget?: number
-    profileMode?: ProfileMode
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -239,8 +232,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiKeyGemini
 
   const [userName, setUserName] = useState("Usuario")
-  const [monthlyBudget, setMonthlyBudget] = useState(200000)
-  const [profileMode, setProfileMode] = useState<ProfileMode>("standard")
   const [usdRate, setUsdRate] = useState(1350)
   const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
 
@@ -320,8 +311,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const hasRealName = data.user_name && data.user_name !== "Usuario"
       const effectiveName = hasRealName ? data.user_name : oauthName
       setUserName(effectiveName)
-      setMonthlyBudget(data.monthly_budget ?? 200000)
-      setProfileMode(data.profile_mode ?? "standard")
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
       setUsdRate(data.usd_rate ?? 1350)
       setAiProvider((data.ai_provider as AIProvider) ?? "claude")
@@ -589,8 +578,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Profile sync ─────────────────────────────────────────────────────────────
   const saveProfile = async (overrides?: {
     userName?: string
-    monthlyBudget?: number
-    profileMode?: ProfileMode
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -602,8 +589,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await supabase.from("profiles").upsert({
       id: user.id,
       user_name: overrides?.userName ?? userName,
-      monthly_budget: overrides?.monthlyBudget ?? monthlyBudget,
-      profile_mode: overrides?.profileMode ?? profileMode,
       exchange_rate_mode: overrides?.exchangeRateMode ?? exchangeRateMode,
       usd_rate: overrides?.usdRate ?? usdRate,
       ai_provider: overrides?.aiProvider ?? aiProvider,
@@ -646,10 +631,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiKey,
     userName,
     setUserName,
-    monthlyBudget,
-    setMonthlyBudget,
-    profileMode,
-    setProfileMode,
     usdRate,
     setUsdRate,
     exchangeRateMode,
@@ -663,7 +644,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }), [user, loadingAuth, isPasswordRecovery, currentView, navDirection, transactions, isProcessing,
        isOnline, pendingOfflineCount, isLoadingHistory, hasMoreTransactions,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
-       monthlyBudget, profileMode, usdRate, exchangeRateMode, timeFilter, customRange])
+       usdRate, exchangeRateMode, timeFilter, customRange])
 
   return (
     <AppContext.Provider value={contextValue}>

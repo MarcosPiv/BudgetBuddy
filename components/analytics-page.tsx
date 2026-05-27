@@ -126,7 +126,7 @@ type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
-  const { setView, transactions, addTransaction, updateTransaction, usdRate, monthlyBudget, profileMode, isLoadingHistory, hasMoreTransactions, loadMoreTransactions } = useApp()
+  const { setView, transactions, addTransaction, updateTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
 
@@ -608,8 +608,6 @@ export function AnalyticsPage() {
           <ShareSummary
             transactions={transactions}
             usdRate={usdRate}
-            monthlyBudget={monthlyBudget}
-            profileMode={profileMode}
           />
         </div>
       </header>

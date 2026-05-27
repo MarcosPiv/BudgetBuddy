@@ -8,10 +8,7 @@ import {
   Sparkles,
   ShieldCheck,
   ArrowLeft,
-  Wallet,
   DollarSign,
-  Briefcase,
-  ReceiptText,
   Wifi,
   WifiOff,
   RefreshCw,
@@ -26,7 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useApp, type ProfileMode, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
+import { useApp, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
 import { useBiometric } from "@/hooks/use-biometric"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import { useTheme } from "next-themes"
@@ -89,10 +86,6 @@ export function SettingsPage() {
     setApiKeyOpenAI,
     apiKeyGemini,
     setApiKeyGemini,
-    monthlyBudget,
-    setMonthlyBudget,
-    profileMode,
-    setProfileMode,
     usdRate,
     setUsdRate,
     exchangeRateMode,
@@ -106,8 +99,6 @@ export function SettingsPage() {
   const [localKeysClaude, setLocalKeysClaude] = useState(apiKeyClaude)
   const [localKeysOpenAI, setLocalKeysOpenAI] = useState(apiKeyOpenAI)
   const [localKeysGemini, setLocalKeysGemini] = useState(apiKeyGemini)
-  const [localBudget, setLocalBudget] = useState(monthlyBudget.toString())
-  const [localMode, setLocalMode] = useState<ProfileMode>(profileMode)
   const [localUsdRate, setLocalUsdRate] = useState(usdRate.toString())
   const [localExMode, setLocalExMode] = useState<ExchangeRateMode>(exchangeRateMode)
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
@@ -216,7 +207,6 @@ export function SettingsPage() {
     }
     setKeyError(null)
 
-    const budget = parseInt(localBudget) || 200000
     let newRate = parseFloat(localUsdRate) || 1350
 
     if (localExMode === "api") {
@@ -229,8 +219,6 @@ export function SettingsPage() {
     setApiKeyClaude(localKeysClaude)
     setApiKeyOpenAI(localKeysOpenAI)
     setApiKeyGemini(localKeysGemini)
-    setMonthlyBudget(budget)
-    setProfileMode(localMode)
     setExchangeRateMode(localExMode)
     setUsdRate(newRate)
 
@@ -240,8 +228,6 @@ export function SettingsPage() {
       apiKeyClaude: localKeysClaude,
       apiKeyOpenAI: localKeysOpenAI,
       apiKeyGemini: localKeysGemini,
-      monthlyBudget: budget,
-      profileMode: localMode,
       exchangeRateMode: localExMode,
       usdRate: newRate,
     })
@@ -360,110 +346,6 @@ export function SettingsPage() {
                 )}
               </div>
             )}
-
-            {/* Profile Mode Selector */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm text-muted-foreground">
-                Perfil financiero
-              </Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  className={`flex flex-col items-center gap-2.5 rounded-xl border p-4 transition-all cursor-pointer ${
-                    localMode === "standard"
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-border bg-secondary/30 hover:bg-secondary/50"
-                  }`}
-                  onClick={() => setLocalMode("standard")}
-                >
-                  <Briefcase
-                    className={`w-6 h-6 ${
-                      localMode === "standard"
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                    }`}
-                  />
-                  <div className="text-center">
-                    <p
-                      className={`text-sm font-semibold ${
-                        localMode === "standard"
-                          ? "text-foreground"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      Estandar
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                      Ingresos y gastos. Ideal para emprendedores o freelancers.
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className={`flex flex-col items-center gap-2.5 rounded-xl border p-4 transition-all cursor-pointer ${
-                    localMode === "expenses_only"
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-border bg-secondary/30 hover:bg-secondary/50"
-                  }`}
-                  onClick={() => setLocalMode("expenses_only")}
-                >
-                  <ReceiptText
-                    className={`w-6 h-6 ${
-                      localMode === "expenses_only"
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                    }`}
-                  />
-                  <div className="text-center">
-                    <p
-                      className={`text-sm font-semibold ${
-                        localMode === "expenses_only"
-                          ? "text-foreground"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      Solo gastos
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                      Controla tus gastos con un presupuesto mensual fijo.
-                    </p>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Monthly Budget (only for expenses_only mode) */}
-            <AnimatePresence>
-              {localMode === "expenses_only" && (
-                <motion.div
-                  className="flex flex-col gap-2"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <Label
-                    htmlFor="budget"
-                    className="text-sm text-muted-foreground flex items-center gap-2"
-                  >
-                    <Wallet className="w-3.5 h-3.5" />
-                    Presupuesto mensual (ARS)
-                  </Label>
-                  <Input
-                    id="budget"
-                    type="number"
-                    placeholder="200000"
-                    value={localBudget}
-                    onChange={(e) => setLocalBudget(e.target.value)}
-                    className="bg-secondary/50 border-border text-foreground placeholder:text-muted-foreground/50 h-11 tabular-nums"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Cuanto quieres gastar como maximo este mes?
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {/* ── USD Exchange Rate (collapsible) ───────────────── */}
             <div className="flex flex-col gap-0">

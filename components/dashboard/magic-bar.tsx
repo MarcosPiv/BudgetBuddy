@@ -526,7 +526,7 @@ export function MagicBar({
                 <div className="relative flex items-center shrink-0">
                   {/* MOBILE: single slot that swaps between mic and send */}
                   <div className="flex md:hidden relative w-9 h-9 items-center justify-center">
-                    {magicInput.trim().length === 0 ? (
+                    {magicInput.trim().length === 0 && attachments.length === 0 ? (
                       <>
                         {/* Lock indicator — rises and highlights as dragY increases */}
                         <AnimatePresence>

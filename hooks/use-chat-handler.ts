@@ -60,8 +60,6 @@ interface ChatHandlerParams {
   apiKey: string
   aiProvider: AIProvider
   usdRate: number
-  monthlyBudget: number
-  isExpensesOnly: boolean
   liveRates: ExchangeRates
   newExRateType: ExchangeRateType
   formatCurrency: (n: number) => string
@@ -85,8 +83,6 @@ export function useChatHandler({
   apiKey,
   aiProvider,
   usdRate,
-  monthlyBudget,
-  isExpensesOnly,
   liveRates,
   newExRateType,
   formatCurrency,
@@ -166,19 +162,6 @@ export function useChatHandler({
     if (dailyAvg > 500 && todayExp > dailyAvg * 2.5) {
       const mult = (todayExp / dailyAvg).toFixed(1)
       anomaly = `Che, hoy gastaste ${formatCurrency(todayExp)}, que es ${mult}x tu promedio diario de esta semana (${formatCurrency(dailyAvg)}). 👀`
-    } else if (isExpensesOnly && monthlyBudget > 0) {
-      const cYear = now.getFullYear(); const cMonth = now.getMonth()
-      const mTxs = transactions.filter(t => { const d = new Date(t.date); return d.getFullYear() === cYear && d.getMonth() === cMonth })
-      const mExp = mTxs.filter(t => t.type === "expense").reduce((a, t) => a + toArs(t), 0)
-      const daysInM = new Date(cYear, cMonth + 1, 0).getDate()
-      const dom = now.getDate()
-      if (dom >= 5) {
-        const proj = Math.round((mExp / dom) * daysInM)
-        const over = proj - monthlyBudget
-        if (over > 0) {
-          anomaly = `Al ritmo actual vas a gastar ${formatCurrency(proj)} este mes, superando tu presupuesto de ${formatCurrency(monthlyBudget)} por ${formatCurrency(over)}. 🚨`
-        }
-      }
     }
 
     if (!anomaly) return
@@ -272,8 +255,6 @@ export function useChatHandler({
       `=== MES ACTUAL (día ${dayOfMonth}/${daysInMonth}) ===`,
       `Ingresos mes: ${formatCurrency(sumIncome(monthTxs))}`,
       `Gastos mes: ${formatCurrency(monthExp)}`,
-      isExpensesOnly && monthlyBudget ? `Presupuesto mensual: ${formatCurrency(monthlyBudget)}` : null,
-      isExpensesOnly && monthlyBudget ? `Presupuesto restante: ${formatCurrency(monthlyBudget - monthExp)} (${Math.round((monthExp / monthlyBudget) * 100)}% usado)` : null,
       `Proyección a fin de mes (ritmo actual): ${formatCurrency(projectionEOM)}`,
       `Promedio diario últimos 7 días: ${formatCurrency(dailyAvg7)}`,
       `Gasto de hoy: ${formatCurrency(todayExp)}`,

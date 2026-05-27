@@ -3,11 +3,11 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Wallet, Briefcase, ReceiptText, Brain, Bot, Sparkles,
+  Wallet, Brain, Bot, Sparkles,
   ArrowRight, CheckCircle2,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { useApp, type ProfileMode, type AIProvider } from "@/lib/app-context"
+import { useApp, type AIProvider } from "@/lib/app-context"
 import { ONBOARDING_KEY } from "@/components/dashboard/shared"
 
 const KEY_PREFIXES: Record<AIProvider, string> = {
@@ -25,21 +25,15 @@ const AI_PROVIDERS: Array<{ id: AIProvider; label: string; model: string; Icon: 
 export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   const {
     userName,
-    setProfileMode, profileMode,
-    setMonthlyBudget, monthlyBudget,
     setAiProvider,
     setApiKeyClaude, setApiKeyOpenAI, setApiKeyGemini,
     saveProfile,
   } = useApp()
 
   const [step, setStep] = useState(0)
-  const TOTAL_STEPS = 3
+  const TOTAL_STEPS = 2
 
   // Step 1 state
-  const [localMode, setLocalMode] = useState<ProfileMode>(profileMode)
-  const [localBudget, setLocalBudget] = useState(monthlyBudget > 0 ? monthlyBudget.toString() : "")
-
-  // Step 2 state
   const [localProvider, setLocalProvider] = useState<AIProvider>("claude")
   const [localKey, setLocalKey] = useState("")
   const [keyError, setKeyError] = useState<string | null>(null)
@@ -51,14 +45,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   const handleNext = () => setStep(s => s + 1)
 
   const finish = async (withAI: boolean) => {
-    const budget = parseInt(localBudget) || 200000
-    setProfileMode(localMode)
-    setMonthlyBudget(budget)
-
-    const aiOverrides: Parameters<typeof saveProfile>[0] = {
-      profileMode: localMode,
-      monthlyBudget: budget,
-    }
+    const aiOverrides: Parameters<typeof saveProfile>[0] = {}
 
     if (withAI && localKey && keyIsValid) {
       setAiProvider(localProvider)
@@ -133,7 +120,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                     ¡Bienvenido/a{userName && userName !== "Usuario" ? `, ${userName.split(" ")[0]}` : ""}!
                   </h2>
                   <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                    Configuremos tu experiencia en 2 pasos para que BudgetBuddy funcione exactamente como necesitás.
+                    Configuremos tu experiencia en 1 paso para que BudgetBuddy funcione exactamente como necesitás.
                   </p>
                 </div>
                 <button
@@ -147,7 +134,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
               </motion.div>
             )}
 
-            {/* ── Step 1: Profile mode ─────────────────────────── */}
+            {/* ── Step 1: AI (optional) ────────────────────────── */}
             {step === 1 && (
               <motion.div
                 key="step-1"
@@ -158,98 +145,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 transition={{ duration: 0.22 }}
               >
                 <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Paso 1 de 2</p>
-                  <h2 className="text-lg font-bold text-foreground">¿Cómo querés usar la app?</h2>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setLocalMode("expenses_only")}
-                    className={`flex flex-col items-center gap-2.5 rounded-xl border p-4 transition-all cursor-pointer ${
-                      localMode === "expenses_only"
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                        : "border-border bg-secondary/30 hover:bg-secondary/50"
-                    }`}
-                  >
-                    <ReceiptText className={`w-6 h-6 ${localMode === "expenses_only" ? "text-primary" : "text-muted-foreground"}`} />
-                    <div className="text-center">
-                      <p className={`text-xs font-semibold ${localMode === "expenses_only" ? "text-foreground" : "text-muted-foreground"}`}>
-                        Solo gastos
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                        Presupuesto mensual fijo
-                      </p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setLocalMode("standard")}
-                    className={`flex flex-col items-center gap-2.5 rounded-xl border p-4 transition-all cursor-pointer ${
-                      localMode === "standard"
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                        : "border-border bg-secondary/30 hover:bg-secondary/50"
-                    }`}
-                  >
-                    <Briefcase className={`w-6 h-6 ${localMode === "standard" ? "text-primary" : "text-muted-foreground"}`} />
-                    <div className="text-center">
-                      <p className={`text-xs font-semibold ${localMode === "standard" ? "text-foreground" : "text-muted-foreground"}`}>
-                        Ingresos y gastos
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                        Balance completo
-                      </p>
-                    </div>
-                  </button>
-                </div>
-
-                <AnimatePresence>
-                  {localMode === "expenses_only" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs text-muted-foreground">Presupuesto mensual (ARS)</label>
-                        <Input
-                          type="number"
-                          placeholder="200000"
-                          value={localBudget}
-                          onChange={(e) => setLocalBudget(e.target.value)}
-                          className="bg-secondary/50 border-border h-10 tabular-nums"
-                        />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  Siguiente
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </motion.div>
-            )}
-
-            {/* ── Step 2: AI (optional) ────────────────────────── */}
-            {step === 2 && (
-              <motion.div
-                key="step-2"
-                className="flex flex-col gap-4"
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -24 }}
-                transition={{ duration: 0.22 }}
-              >
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Paso 2 de 2</p>
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Paso 1 de 1</p>
                   <h2 className="text-lg font-bold text-foreground">Activá el asistente IA</h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     Opcional — podés configurarlo después en Ajustes. Sin API key, usá el formulario manual (✏️) en la barra inferior para cargar movimientos.

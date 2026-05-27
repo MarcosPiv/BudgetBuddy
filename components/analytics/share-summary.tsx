@@ -44,14 +44,12 @@ function drawCard(canvas: HTMLCanvasElement, opts: {
   expenses: number
   income: number
   cats: { name: string; pct: number }[]
-  budget: number
-  profileMode: string
 }) {
   const W = 1080, H = 1920
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext("2d")!
-  const { month, year, expenses, income, cats, budget, profileMode } = opts
+  const { month, year, expenses, income, cats } = opts
 
   // ── Background
   ctx.fillStyle = "#08100d"
@@ -129,7 +127,7 @@ function drawCard(canvas: HTMLCanvasElement, opts: {
   y += 78
 
   // ── STATS CARDS ─────────────────────────────────────────────────────────────
-  if (profileMode !== "expenses_only") {
+  {
     const cW = (W - 144 - 20) / 2, cH = 162, cR = 22
     const balance = income - expenses
     const isPos = balance >= 0
@@ -160,8 +158,6 @@ function drawCard(canvas: HTMLCanvasElement, opts: {
     ctx.fillText((isPos ? "+" : "−") + fmt(Math.abs(balance)), bx + 24, y + 58)
 
     y += cH + 64
-  } else {
-    y += 24
   }
 
   // ── CATEGORIES ──────────────────────────────────────────────────────────────
@@ -207,36 +203,6 @@ function drawCard(canvas: HTMLCanvasElement, opts: {
     y += 24
   }
 
-  // ── BUDGET BAR ──────────────────────────────────────────────────────────────
-  if (budget > 0 && expenses > 0) {
-    const usedPct = Math.min((expenses / budget) * 100, 100)
-    const over = expenses > budget
-    y += 20
-
-    ctx.fillStyle = "rgba(52,211,153,0.7)"
-    ctx.font = "600 27px system-ui"
-    ctx.textAlign = "left"; ctx.textBaseline = "top"
-    ctx.fillText("PRESUPUESTO MENSUAL", 74, y)
-    y += 46
-
-    const bW = W - 144, bH = 18
-    rr(ctx, 72, y, bW, bH, 9)
-    ctx.fillStyle = "rgba(255,255,255,0.07)"; ctx.fill()
-    rr(ctx, 72, y, bW * usedPct / 100, bH, 9)
-    ctx.fillStyle = over ? "#f87171" : "#10b981"; ctx.fill()
-    y += 30
-
-    ctx.fillStyle = over ? "#f87171" : "#34d399"
-    ctx.font = "500 28px system-ui"
-    ctx.textAlign = "left"; ctx.textBaseline = "top"
-    ctx.fillText(
-      over
-        ? `Excediste el presupuesto (${fmt(budget)} ARS)`
-        : `${Math.round(usedPct)}% usado · ${fmt(budget)} ARS`,
-      72, y
-    )
-  }
-
   // ── FOOTER ──────────────────────────────────────────────────────────────────
   const fY = H - 100
 
@@ -269,12 +235,10 @@ function drawCard(canvas: HTMLCanvasElement, opts: {
 interface ShareSummaryProps {
   transactions: Transaction[]
   usdRate: number
-  monthlyBudget: number
-  profileMode: string
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function ShareSummary({ transactions, usdRate, monthlyBudget, profileMode }: ShareSummaryProps) {
+export function ShareSummary({ transactions, usdRate }: ShareSummaryProps) {
   const [loading, setLoading] = useState(false)
 
   const toArs = useCallback(
@@ -316,7 +280,7 @@ export function ShareSummary({ transactions, usdRate, monthlyBudget, profileMode
         .map(([name, val]) => ({ name, pct: expenses > 0 ? (val / expenses) * 100 : 0 }))
 
       const canvas = document.createElement("canvas")
-      drawCard(canvas, { month, year, expenses, income, cats, budget: monthlyBudget, profileMode })
+      drawCard(canvas, { month, year, expenses, income, cats })
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas toBlob failed")), "image/png")
@@ -343,7 +307,7 @@ export function ShareSummary({ transactions, usdRate, monthlyBudget, profileMode
     } finally {
       setLoading(false)
     }
-  }, [transactions, usdRate, monthlyBudget, profileMode, toArs])
+  }, [transactions, usdRate, toArs])
 
   return (
     <button

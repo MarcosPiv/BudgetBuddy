@@ -48,8 +48,6 @@ export function DashboardPage() {
     updateTransaction,
     setView,
     signOut,
-    monthlyBudget,
-    profileMode,
     userName,
     usdRate,
     apiKey,
@@ -168,23 +166,16 @@ export function DashboardPage() {
   const { rates: liveRates, loading: ratesLoading } = useExchangeRate({ enabled: true })
 
   // ── Derived / computed ───────────────────────────────────────────────────────
-  const isExpensesOnly = profileMode === "expenses_only"
-
   const suggestedPrompts = useMemo(() => {
     if (transactions.length === 0) {
       return ["¿Cómo registro un gasto?", "¿Qué puedo consultar?", "¿Cómo funciona el asistente?"]
     }
-    const prompts = ["¿Cuánto gasté esta semana?"]
-    if (monthlyBudget > 0 && isExpensesOnly) {
-      prompts.push("¿Me alcanza el presupuesto este mes?")
-    } else {
-      prompts.push("¿Cómo está mi balance este mes?")
-    }
+    const prompts = ["¿Cuánto gasté esta semana?", "¿Cómo está mi balance este mes?"]
     prompts.push(transactions.some(t => t.currency === "USD")
       ? "¿Cuánto gasté en dólares este mes?"
       : "¿En qué categoría gasto más?")
     return prompts
-  }, [transactions, monthlyBudget, isExpensesOnly])
+  }, [transactions])
 
   const filteredTransactions = useMemo(() => {
     const now = new Date()
@@ -219,8 +210,7 @@ export function DashboardPage() {
     [filteredTransactions, usdRate],
   )
 
-  const balance = isExpensesOnly ? monthlyBudget - totalExpenses : totalIncome - totalExpenses
-  const spentPercent = isExpensesOnly ? Math.min((totalExpenses / monthlyBudget) * 100, 100) : 0
+  const balance = totalIncome - totalExpenses
 
   const prevPeriodExpenses = useMemo(() => {
     if (timeFilter === "custom") return null
@@ -692,8 +682,6 @@ export function DashboardPage() {
     apiKey,
     aiProvider,
     usdRate,
-    monthlyBudget,
-    isExpensesOnly,
     liveRates,
     newExRateType,
     formatCurrency,
@@ -779,7 +767,7 @@ export function DashboardPage() {
               </div>
               <div className="hidden sm:flex flex-col leading-none min-w-0">
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
+                  {"Balance"} · {filterLabels[timeFilter]}
                 </span>
                 <div className="flex items-baseline gap-2">
                   <motion.span
@@ -873,7 +861,7 @@ export function DashboardPage() {
           {/* Mobile-only: prominent centered balance */}
           <div className="sm:hidden px-4 pb-3 flex flex-col items-center gap-0.5">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              {isExpensesOnly ? "Disponible" : "Balance"} · {filterLabels[timeFilter]}
+              {"Balance"} · {filterLabels[timeFilter]}
             </span>
             <motion.span
               key={balance}
@@ -924,12 +912,9 @@ export function DashboardPage() {
             />
 
             <SummaryCards
-              isExpensesOnly={isExpensesOnly}
               totalExpenses={totalExpenses}
               totalIncome={totalIncome}
               balance={balance}
-              spentPercent={spentPercent}
-              monthlyBudget={monthlyBudget}
               formatCurrency={formatCurrency}
             />
 
