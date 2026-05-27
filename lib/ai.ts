@@ -11,6 +11,7 @@ export interface ParsedTransaction {
   suggestedCurrency?: "USD"     // only present when AI explicitly detects USD in the text
   suggestedExRateType?: "BLUE" | "OFICIAL" | "TARJETA" | "MEP" // only present when rate type is explicitly mentioned
   observation?: string          // installment note e.g. "Cuota 1/6", populated by AI when cuotas detected
+  account?: string              // bank/wallet name if explicitly mentioned (e.g. "Banco Galicia", "Mercado Pago")
 }
 
 export interface ChatTurn {
@@ -170,6 +171,12 @@ Campo suggestedExRateType (incluir SOLO si se menciona explícitamente el tipo d
 - "MEP": menciona "MEP", "dólar MEP", "bolsa", "contado con liqui", "CCL"
 - Omitir completamente si no se especifica el tipo (el sistema usará el configurado por el usuario)
 
+Campo account (incluir SOLO cuando se menciona explícitamente el banco o billetera utilizado):
+- Valor: nombre normalizado del medio de pago (ej: "Banco Galicia", "Mercado Pago", "BBVA", "Efectivo")
+- Detectar en frases como: "con Galicia", "por Mercado Pago", "del BBVA", "con el débito del Santander", "con la de Macro", "en efectivo", "pagué con Ualá"
+- Si es imagen de ticket con logo/nombre de banco visible: incluirlo
+- Omitir completamente si no se menciona ningún banco, billetera o medio de pago
+
 Campo observation (incluir SOLO cuando se detectan cuotas o financiación):
 - "en N cuotas de X" → amount: X (monto por cuota), observation: "Cuota 1/N"
 - "a N cuotas" sin monto por cuota → amount: monto_total ÷ N, observation: "Cuota 1/N"
@@ -262,6 +269,11 @@ function validateOne(raw: ParsedTransaction): ParsedTransaction {
   if (raw.observation !== undefined) {
     const sanitized = String(raw.observation).replace(/<[^>]*>/g, "").trim().slice(0, 100)
     raw.observation = sanitized || undefined
+  }
+  // account: sanitize — trim, max 60 chars, strip HTML; remove if empty
+  if (raw.account !== undefined) {
+    const sanitized = String(raw.account).replace(/<[^>]*>/g, "").trim().slice(0, 60)
+    raw.account = sanitized || undefined
   }
   return raw
 }

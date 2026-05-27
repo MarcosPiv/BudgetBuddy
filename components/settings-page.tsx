@@ -19,11 +19,13 @@ import {
   BellOff,
   ChevronDown,
   Fingerprint,
+  Landmark,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useApp, type ExchangeRateMode, type AIProvider } from "@/lib/app-context"
+import { PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES } from "@/components/dashboard/shared"
 import { useBiometric } from "@/hooks/use-biometric"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import { useTheme } from "next-themes"
@@ -90,6 +92,8 @@ export function SettingsPage() {
     setUsdRate,
     exchangeRateMode,
     setExchangeRateMode,
+    defaultAccount,
+    setDefaultAccount,
     saveProfile,
   } = useApp()
 
@@ -101,6 +105,10 @@ export function SettingsPage() {
   const [localKeysGemini, setLocalKeysGemini] = useState(apiKeyGemini)
   const [localUsdRate, setLocalUsdRate] = useState(usdRate.toString())
   const [localExMode, setLocalExMode] = useState<ExchangeRateMode>(exchangeRateMode)
+  const [localDefaultAccount, setLocalDefaultAccount] = useState(defaultAccount)
+  const [customAccountInput, setCustomAccountInput] = useState(
+    PAYMENT_ACCOUNTS.find(a => a.name === defaultAccount) ? "" : defaultAccount === "Efectivo" ? "" : defaultAccount
+  )
   const [selectedApiKey, setSelectedApiKey] = useState<"blue" | "oficial" | "tarjeta" | "mep">("blue")
   const [saved, setSaved] = useState(false)
   const [keyError, setKeyError] = useState<string | null>(null)
@@ -214,6 +222,9 @@ export function SettingsPage() {
       if (active?.venta) newRate = active.venta
     }
 
+    // Resolve final default account (custom text wins if provided)
+    const finalDefaultAccount = customAccountInput.trim() || localDefaultAccount
+
     // Update context state
     setAiProvider(localProvider)
     setApiKeyClaude(localKeysClaude)
@@ -221,6 +232,7 @@ export function SettingsPage() {
     setApiKeyGemini(localKeysGemini)
     setExchangeRateMode(localExMode)
     setUsdRate(newRate)
+    setDefaultAccount(finalDefaultAccount)
 
     // Pass fresh values to avoid stale-closure bug
     await saveProfile({
@@ -230,6 +242,7 @@ export function SettingsPage() {
       apiKeyGemini: localKeysGemini,
       exchangeRateMode: localExMode,
       usdRate: newRate,
+      defaultAccount: finalDefaultAccount,
     })
 
     setEditingKey(false)
@@ -346,6 +359,57 @@ export function SettingsPage() {
                 )}
               </div>
             )}
+
+            {/* ── Cuenta predeterminada ────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                <Landmark className="w-3.5 h-3.5" />
+                Cuenta predeterminada
+              </Label>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Se asigna automáticamente cuando no se detecta ningún banco en el movimiento.
+              </p>
+
+              {ACCOUNT_CATEGORIES.map(cat => {
+                const items = PAYMENT_ACCOUNTS.filter(a => a.category === cat)
+                return (
+                  <div key={cat} className="flex flex-col gap-1.5">
+                    <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">{cat}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {items.map(acc => (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => { setLocalDefaultAccount(acc.name); setCustomAccountInput("") }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                            localDefaultAccount === acc.name && !customAccountInput.trim()
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
+                          }`}
+                        >
+                          {acc.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Custom account */}
+              <div className="flex flex-col gap-1.5 mt-1">
+                <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Otra</p>
+                <Input
+                  type="text"
+                  placeholder="Nombre de tu cuenta o banco..."
+                  value={customAccountInput}
+                  onChange={e => {
+                    setCustomAccountInput(e.target.value)
+                    if (e.target.value.trim()) setLocalDefaultAccount("")
+                  }}
+                  className="h-10 text-sm bg-secondary/50 border-border"
+                />
+              </div>
+            </div>
 
             {/* ── USD Exchange Rate (collapsible) ───────────────── */}
             <div className="flex flex-col gap-0">

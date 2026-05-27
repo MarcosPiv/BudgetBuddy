@@ -25,6 +25,7 @@ import { ChatPanel } from "./dashboard/chat-panel"
 import { EditDialog, type EditForm } from "./dashboard/edit-dialog"
 import { CameraModal } from "./dashboard/camera-modal"
 import { ImportCsvModal } from "./dashboard/import-csv-modal"
+import { AccountsModal } from "./dashboard/accounts-modal"
 import { toast } from "sonner"
 
 // Shared utilities
@@ -34,6 +35,7 @@ import {
   formatCurrency,
   fileToBase64,
   compressImage,
+  detectAccountFromText,
   type Attachment,
 } from "./dashboard/shared"
 
@@ -49,6 +51,7 @@ export function DashboardPage() {
     setView,
     signOut,
     userName,
+    defaultAccount,
     usdRate,
     apiKey,
     aiProvider,
@@ -91,6 +94,9 @@ export function DashboardPage() {
 
   // ── CSV import ───────────────────────────────────────────────────────────────
   const [showImportCSV, setShowImportCSV] = useState(false)
+
+  // ── Accounts modal ───────────────────────────────────────────────────────────
+  const [showAccountsModal, setShowAccountsModal] = useState(false)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -478,6 +484,12 @@ export function DashboardPage() {
           }
         }
 
+        // Account: AI-detected > client-side keyword match > user's default account
+        const detectedAccount =
+          result.account ||
+          detectAccountFromText(textInput) ||
+          defaultAccount
+
         addTransaction({
           description: result.description,
           amount: result.amount,
@@ -492,6 +504,7 @@ export function DashboardPage() {
           observation: obs ?? result.observation,
           isRecurring: result.suggestRecurring === true,
           receiptUrl: valid.length === 1 ? receiptUrl : undefined,
+          account: detectedAccount,
         }, (msg) => {
           setAiError(msg)
           setTimeout(() => setAiError(null), 6000)
@@ -682,6 +695,7 @@ export function DashboardPage() {
     apiKey,
     aiProvider,
     usdRate,
+    defaultAccount,
     liveRates,
     newExRateType,
     formatCurrency,
@@ -765,7 +779,11 @@ export function DashboardPage() {
               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shrink-0">
                 <Wallet className="w-4 h-4 text-primary-foreground" />
               </div>
-              <div className="hidden sm:flex flex-col leading-none min-w-0">
+              <button
+                type="button"
+                onClick={() => setShowAccountsModal(true)}
+                className="hidden sm:flex flex-col leading-none min-w-0 cursor-pointer hover:opacity-80 transition-opacity text-left"
+              >
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                   {"Balance"} · {filterLabels[timeFilter]}
                 </span>
@@ -789,7 +807,7 @@ export function DashboardPage() {
                     </span>
                   )}
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* Offline / syncing pill */}
@@ -863,15 +881,21 @@ export function DashboardPage() {
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               {"Balance"} · {filterLabels[timeFilter]}
             </span>
-            <motion.span
-              key={balance}
-              className={`text-3xl font-bold tabular-nums ${balance >= 0 ? "text-primary" : "text-destructive"}`}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3 }}
+            <button
+              type="button"
+              onClick={() => setShowAccountsModal(true)}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
             >
-              {balance < 0 ? "-" : ""}{formatCurrency(balance)}
-            </motion.span>
+              <motion.span
+                key={balance}
+                className={`text-3xl font-bold tabular-nums block ${balance >= 0 ? "text-primary" : "text-destructive"}`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                {balance < 0 ? "-" : ""}{formatCurrency(balance)}
+              </motion.span>
+            </button>
             {expensesChangePct !== null && (
               <span className={`text-xs font-medium tabular-nums mt-0.5 ${expensesChangePct > 5 ? "text-destructive" :
                 expensesChangePct < -5 ? "text-primary" :
@@ -1014,6 +1038,14 @@ export function DashboardPage() {
 
         {/* CSV Import */}
         <ImportCsvModal open={showImportCSV} onClose={() => setShowImportCSV(false)} />
+
+        {/* Accounts distribution */}
+        <AccountsModal
+          open={showAccountsModal}
+          onClose={() => setShowAccountsModal(false)}
+          transactions={transactions}
+          usdRate={usdRate}
+        />
 
         {/* Edit existing transaction */}
         <EditDialog

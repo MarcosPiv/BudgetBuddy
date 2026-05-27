@@ -28,6 +28,8 @@ export interface Transaction {
   receiptUrl?: string
   /** Se repite automáticamente cada mes */
   isRecurring?: boolean
+  /** Banco o billetera utilizado (ej: "Banco Galicia", "Mercado Pago") */
+  account?: string
 }
 
 // ── Offline queue ─────────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ function mapTransaction(row: any): Transaction {
     exchangeRateType: row.exchange_rate_type ?? null,
     receiptUrl: row.receipt_url ?? undefined,
     isRecurring: row.is_recurring ?? false,
+    account: row.account ?? undefined,
   }
 }
 
@@ -108,12 +111,15 @@ interface AppState {
   // Profile
   userName: string
   setUserName: (name: string) => void
+  defaultAccount: string
+  setDefaultAccount: (account: string) => void
   usdRate: number
   setUsdRate: (n: number) => void
   exchangeRateMode: ExchangeRateMode
   setExchangeRateMode: (mode: ExchangeRateMode) => void
   saveProfile: (overrides?: {
     userName?: string
+    defaultAccount?: string
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -232,6 +238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiKeyGemini
 
   const [userName, setUserName] = useState("Usuario")
+  const [defaultAccount, setDefaultAccount] = useState("Efectivo")
   const [usdRate, setUsdRate] = useState(1350)
   const [exchangeRateMode, setExchangeRateMode] = useState<ExchangeRateMode>("api")
 
@@ -311,6 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const hasRealName = data.user_name && data.user_name !== "Usuario"
       const effectiveName = hasRealName ? data.user_name : oauthName
       setUserName(effectiveName)
+      setDefaultAccount(data.default_account ?? "Efectivo")
       setExchangeRateMode(data.exchange_rate_mode ?? "api")
       setUsdRate(data.usd_rate ?? 1350)
       setAiProvider((data.ai_provider as AIProvider) ?? "claude")
@@ -477,6 +485,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       exchange_rate_type: t.exchangeRateType ?? null,
       receipt_url: t.receiptUrl ?? null,
       is_recurring: t.isRecurring ?? false,
+      account: t.account ?? null,
     }
 
     // Offline: queue for sync when reconnected (keep optimistic update)
@@ -553,6 +562,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       exchange_rate_type: merged.exchangeRateType ?? null,
       receipt_url: merged.receiptUrl ?? null,
       is_recurring: merged.isRecurring ?? false,
+      account: merged.account ?? null,
     }
 
     if (!navigator.onLine) {
@@ -578,6 +588,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Profile sync ─────────────────────────────────────────────────────────────
   const saveProfile = async (overrides?: {
     userName?: string
+    defaultAccount?: string
     usdRate?: number
     exchangeRateMode?: ExchangeRateMode
     aiProvider?: AIProvider
@@ -589,6 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await supabase.from("profiles").upsert({
       id: user.id,
       user_name: overrides?.userName ?? userName,
+      default_account: overrides?.defaultAccount ?? defaultAccount,
       exchange_rate_mode: overrides?.exchangeRateMode ?? exchangeRateMode,
       usd_rate: overrides?.usdRate ?? usdRate,
       ai_provider: overrides?.aiProvider ?? aiProvider,
@@ -631,6 +643,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiKey,
     userName,
     setUserName,
+    defaultAccount,
+    setDefaultAccount,
     usdRate,
     setUsdRate,
     exchangeRateMode,
@@ -644,7 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }), [user, loadingAuth, isPasswordRecovery, currentView, navDirection, transactions, isProcessing,
        isOnline, pendingOfflineCount, isLoadingHistory, hasMoreTransactions,
        aiProvider, apiKeyClaude, apiKeyOpenAI, apiKeyGemini, apiKey, userName,
-       usdRate, exchangeRateMode, timeFilter, customRange])
+       defaultAccount, usdRate, exchangeRateMode, timeFilter, customRange])
 
   return (
     <AppContext.Provider value={contextValue}>

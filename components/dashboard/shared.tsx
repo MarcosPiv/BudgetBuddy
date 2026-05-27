@@ -29,6 +29,89 @@ export const CATEGORY_ICON_MAP: Record<string, string> = {
 
 export const ONBOARDING_KEY = "bb_onboarding_v1"
 
+// ── Payment accounts ─────────────────────────────────────────────────────────
+
+export type PaymentAccount = {
+  id: string
+  name: string
+  category: string
+  keywords: string[]
+}
+
+export const PAYMENT_ACCOUNTS: PaymentAccount[] = [
+  // Billeteras Virtuales
+  { id: "mercado-pago",  name: "Mercado Pago",  category: "Billetera Virtual",  keywords: ["mercado pago","mercadopago","mercadito","mp "] },
+  { id: "uala",          name: "Ualá",           category: "Billetera Virtual",  keywords: ["ualá","uala"] },
+  { id: "naranja-x",     name: "Naranja X",      category: "Billetera Virtual",  keywords: ["naranja x","naranjax","naranja"] },
+  { id: "personal-pay",  name: "Personal Pay",   category: "Billetera Virtual",  keywords: ["personal pay","personalpay"] },
+  { id: "modo",          name: "MODO",           category: "Billetera Virtual",  keywords: ["modo"] },
+  { id: "prex",          name: "Prex Argentina", category: "Billetera Virtual",  keywords: ["prex"] },
+  { id: "claro-pay",     name: "Claro Pay",      category: "Billetera Virtual",  keywords: ["claro pay","claropay"] },
+  { id: "astropay",      name: "Astropay",       category: "Billetera Virtual",  keywords: ["astropay","astro pay"] },
+  { id: "moni",          name: "Moni",           category: "Billetera Virtual",  keywords: ["moni"] },
+  { id: "pluspagos",     name: "Pluspagos",      category: "Billetera Virtual",  keywords: ["pluspagos","plus pagos"] },
+  // Cripto / Inversión
+  { id: "lemon",         name: "Lemon Cash",          category: "Cripto/Inversión", keywords: ["lemon","lemon cash"] },
+  { id: "belo",          name: "belo",                category: "Cripto/Inversión", keywords: ["belo"] },
+  { id: "fiwind",        name: "Fiwind",              category: "Cripto/Inversión", keywords: ["fiwind"] },
+  { id: "buenbit",       name: "Buenbit",             category: "Cripto/Inversión", keywords: ["buenbit","buen bit"] },
+  { id: "ripio",         name: "Ripio",               category: "Cripto/Inversión", keywords: ["ripio"] },
+  { id: "bitso",         name: "Bitso",               category: "Cripto/Inversión", keywords: ["bitso"] },
+  { id: "satoshi-tango", name: "SatoshiTango",        category: "Cripto/Inversión", keywords: ["satoshitango","satoshi tango","satoshi"] },
+  { id: "cocos",         name: "Cocos Capital",       category: "Cripto/Inversión", keywords: ["cocos","cocos capital"] },
+  { id: "ieb",           name: "IEB+",                category: "Cripto/Inversión", keywords: ["ieb+","ieb "] },
+  { id: "lb-finanzas",   name: "LB Finanzas",         category: "Cripto/Inversión", keywords: ["lb finanzas"] },
+  { id: "n1u",           name: "n1u",                 category: "Cripto/Inversión", keywords: ["n1u"] },
+  { id: "iol",           name: "IOL (InvertirOnline)", category: "Cripto/Inversión", keywords: ["iol","invertironline","invertir online"] },
+  { id: "banza",         name: "Banza",               category: "Cripto/Inversión", keywords: ["banza"] },
+  { id: "balanz",        name: "Balanz",              category: "Cripto/Inversión", keywords: ["balanz"] },
+  { id: "bull-market",   name: "Bull Market Brokers", category: "Cripto/Inversión", keywords: ["bull market","bullmarket"] },
+  // Bancos Digitales
+  { id: "brubank",       name: "Brubank",        category: "Banco Digital", keywords: ["brubank"] },
+  { id: "reba",          name: "Reba",           category: "Banco Digital", keywords: ["reba"] },
+  { id: "openbank",      name: "Openbank",       category: "Banco Digital", keywords: ["openbank","open bank"] },
+  { id: "banco-del-sol", name: "Banco del Sol",  category: "Banco Digital", keywords: ["banco del sol","bancosol"] },
+  // Bancos Privados
+  { id: "galicia",       name: "Banco Galicia",     category: "Banco Privado", keywords: ["galicia","de galicia"] },
+  { id: "santander",     name: "Banco Santander",   category: "Banco Privado", keywords: ["santander"] },
+  { id: "bbva",          name: "BBVA",              category: "Banco Privado", keywords: ["bbva","frances","francés"] },
+  { id: "macro",         name: "Banco Macro",       category: "Banco Privado", keywords: ["macro","de macro"] },
+  { id: "credicoop",     name: "Banco Credicoop",   category: "Banco Privado", keywords: ["credicoop"] },
+  { id: "patagonia",     name: "Banco Patagonia",   category: "Banco Privado", keywords: ["patagonia","de patagonia"] },
+  { id: "supervielle",   name: "Banco Supervielle", category: "Banco Privado", keywords: ["supervielle"] },
+  { id: "icbc",          name: "ICBC",              category: "Banco Privado", keywords: ["icbc"] },
+  { id: "hipotecario",   name: "Banco Hipotecario", category: "Banco Privado", keywords: ["hipotecario"] },
+  { id: "comafi",        name: "Banco Comafi",      category: "Banco Privado", keywords: ["comafi"] },
+  { id: "piano",         name: "Banco Piano",       category: "Banco Privado", keywords: ["piano","banco piano"] },
+  { id: "columbia",      name: "Banco Columbia",    category: "Banco Privado", keywords: ["columbia","banco columbia"] },
+  { id: "bica",          name: "Banco Bica",        category: "Banco Privado", keywords: ["bica"] },
+  { id: "roela",         name: "Banco Roela",       category: "Banco Privado", keywords: ["roela"] },
+  // Bancos Públicos
+  { id: "bna",           name: "Banco Nación (BNA+)",            category: "Banco Público", keywords: ["bna","banco nacion","banco de la nacion","nacion "] },
+  { id: "bapro",         name: "Banco Provincia (Cuenta DNI)",   category: "Banco Público", keywords: ["bapro","banco provincia","cuenta dni","provincia "] },
+  { id: "banco-ciudad",  name: "Banco Ciudad (Buepp)",           category: "Banco Público", keywords: ["banco ciudad","buepp"] },
+  { id: "bancor",        name: "Banco de Córdoba",               category: "Banco Público", keywords: ["bancor","banco de cordoba","banco córdoba"] },
+  { id: "bersa",         name: "Banco Entre Ríos",               category: "Banco Público", keywords: ["bersa","banco entre rios","entre rios "] },
+  { id: "nuevo-banco-santa-fe", name: "Nuevo Banco Santa Fe",   category: "Banco Público", keywords: ["nuevo banco santa fe","nbsf","santa fe "] },
+  // Efectivo
+  { id: "efectivo",      name: "Efectivo",     category: "Efectivo", keywords: ["efectivo","cash","en mano","plata en mano","en efectivo"] },
+]
+
+export const ACCOUNT_CATEGORIES = [
+  "Billetera Virtual", "Cripto/Inversión", "Banco Digital", "Banco Privado", "Banco Público", "Efectivo",
+]
+
+/** Client-side keyword detection — returns account name or undefined */
+export function detectAccountFromText(text: string): string | undefined {
+  const lower = " " + text.toLowerCase() + " "
+  for (const acc of PAYMENT_ACCOUNTS) {
+    if (acc.keywords.some(kw => lower.includes(" " + kw) || lower.includes(kw + " ") || lower.includes(kw + ","))) {
+      return acc.name
+    }
+  }
+  return undefined
+}
+
 export interface ChatMessage {
   role: "bot" | "user"
   text: string

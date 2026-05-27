@@ -8,7 +8,7 @@ import {
   transcribeAudioAttachment, sanitizeUserInput, type ChatTurn, type AIAttachment,
 } from "@/lib/ai"
 import type { ExchangeRates } from "@/hooks/use-exchange-rate"
-import { fileToBase64 } from "@/components/dashboard/shared"
+import { fileToBase64, detectAccountFromText } from "@/components/dashboard/shared"
 import type { ChatMessage } from "@/components/dashboard/shared"
 
 // Generic words that indicate transaction type rather than a description keyword
@@ -60,6 +60,7 @@ interface ChatHandlerParams {
   apiKey: string
   aiProvider: AIProvider
   usdRate: number
+  defaultAccount: string
   liveRates: ExchangeRates
   newExRateType: ExchangeRateType
   formatCurrency: (n: number) => string
@@ -83,6 +84,7 @@ export function useChatHandler({
   apiKey,
   aiProvider,
   usdRate,
+  defaultAccount,
   liveRates,
   newExRateType,
   formatCurrency,
@@ -544,6 +546,11 @@ export function useChatHandler({
                 usdToast = true
               }
             }
+            const chatDetectedAccount =
+              result.account ||
+              detectAccountFromText(userMsg) ||
+              defaultAccount
+
             addTransactionRef.current({
               description: result.description,
               amount: result.amount,
@@ -557,6 +564,7 @@ export function useChatHandler({
               exchangeRateType: rateType2,
               observation: result.observation,
               isRecurring: result.suggestRecurring === true,
+              account: chatDetectedAccount,
             }, (msg) => { setChatMessages(prev => [...prev, { role: "bot", text: `⚠️ ${msg}` }]) })
             const arsAmt = curr2 === "USD" ? (result.amount * (rate2 ?? usdRate)) : result.amount
             confirmParts.push(`${result.type === "income" ? "📈" : "📉"} ${result.description} · ${formatCurrency(arsAmt)}`)
