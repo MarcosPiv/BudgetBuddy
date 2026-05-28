@@ -374,8 +374,8 @@ export function TransactionList({
                             onPointerDown={(e) => e.stopPropagation()}
                           />
                         </div>
-                        {/* Category chips */}
-                        <div className="px-2 pb-2 flex flex-wrap gap-1.5">
+                        {/* Category chips — horizontal scroll */}
+                        <div className="px-2 pb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
                           {filteredCategoryChips.map((cat) => (
                             <button
                               key={cat}
@@ -385,7 +385,7 @@ export function TransactionList({
                                 setCategoryPickerTxId(null)
                                 setCategorySearch("")
                               }}
-                              className={`px-3 py-1 text-xs rounded-lg border transition-colors cursor-pointer ${
+                              className={`flex-none px-3 py-1 text-xs rounded-lg border transition-colors cursor-pointer ${
                                 tx.category === cat
                                   ? "bg-primary text-primary-foreground border-primary"
                                   : "bg-background border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -394,9 +394,6 @@ export function TransactionList({
                               {cat}
                             </button>
                           ))}
-                          {filteredCategoryChips.length === 0 && !isNewCategorySearch && (
-                            <p className="text-xs text-muted-foreground/50 px-1 py-0.5">Sin resultados</p>
-                          )}
                           {isNewCategorySearch && (
                             <button
                               type="button"
@@ -409,11 +406,14 @@ export function TransactionList({
                                 setCategoryPickerTxId(null)
                                 setCategorySearch("")
                               }}
-                              className="px-3 py-1 text-xs rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer flex items-center gap-1"
+                              className="flex-none px-3 py-1 text-xs rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer flex items-center gap-1"
                             >
                               <Plus className="w-3 h-3" />
                               Crear &ldquo;{categorySearch.trim()}&rdquo;
                             </button>
+                          )}
+                          {filteredCategoryChips.length === 0 && !isNewCategorySearch && (
+                            <p className="flex-none text-xs text-muted-foreground/50 px-1 py-0.5">Sin resultados</p>
                           )}
                         </div>
                       </motion.div>

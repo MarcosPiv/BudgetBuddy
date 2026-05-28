@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { TrendingUp, TrendingDown, Repeat, DollarSign, Landmark, Plus } from "lucide-react"
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Landmark, Plus, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -69,12 +69,29 @@ export function EditDialog({
     if (typeof window === "undefined") return []
     try { return JSON.parse(localStorage.getItem("bb_custom_categories") ?? "[]") } catch { return [] }
   })
+  const catContainerRef = useRef<HTMLDivElement>(null)
 
-  const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
-  const filteredCats = useMemo(() => {
+  useEffect(() => {
+    if (!catDropOpen) return
+    const handleOutside = (e: MouseEvent) => {
+      if (catContainerRef.current && !catContainerRef.current.contains(e.target as Node)) {
+        setCatDropOpen(false)
+        setCatSearch("")
+      }
+    }
+    document.addEventListener("mousedown", handleOutside)
+    return () => document.removeEventListener("mousedown", handleOutside)
+  }, [catDropOpen])
+
+  const filteredStandardCats = useMemo(() => {
     const s = catSearch.toLowerCase().trim()
-    return s ? allCategories.filter(c => c.toLowerCase().includes(s)) : allCategories
-  }, [allCategories, catSearch])
+    return s ? VALID_CATEGORIES.filter(c => c.toLowerCase().includes(s)) : VALID_CATEGORIES
+  }, [catSearch])
+  const filteredCustomCats = useMemo(() => {
+    const s = catSearch.toLowerCase().trim()
+    return s ? customCategories.filter(c => c.toLowerCase().includes(s)) : customCategories
+  }, [catSearch, customCategories])
+  const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
   const isNewCat = catSearch.trim().length > 0 &&
     !allCategories.some(c => c.toLowerCase() === catSearch.toLowerCase().trim())
 
@@ -252,62 +269,110 @@ export function EditDialog({
           <div className="flex gap-2">
             <div className="flex flex-col gap-1.5 flex-1 min-w-0">
               <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
-              <div className="relative">
-                <Input
-                  value={catDropOpen ? catSearch : editForm.category}
-                  onChange={(e) => setCatSearch(e.target.value)}
-                  onFocus={() => { setCatSearch(editForm.category); setCatDropOpen(true) }}
-                  onBlur={() => setTimeout(() => { setCatDropOpen(false); setCatSearch("") }, 150)}
-                  className="bg-secondary/50 border-border h-10 text-sm"
-                  placeholder="Buscar categoría..."
-                  autoComplete="off"
-                />
+              <div ref={catContainerRef} className="relative">
+                {/* Trigger */}
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 h-10 bg-secondary/50 border border-border rounded-lg text-sm text-left cursor-pointer hover:bg-secondary transition-colors"
+                  onClick={() => {
+                    if (catDropOpen) { setCatDropOpen(false); setCatSearch("") }
+                    else { setCatSearch(""); setCatDropOpen(true) }
+                  }}
+                >
+                  <span className={editForm.category ? "text-foreground" : "text-muted-foreground/60"}>
+                    {editForm.category || "Seleccionar categoría"}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${catDropOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {/* Dropdown */}
                 <AnimatePresence>
                   {catDropOpen && (
                     <motion.div
                       className="absolute z-50 top-full mt-1 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
-                      initial={{ opacity: 0, y: -4 }}
+                      initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
+                      exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.15 }}
                     >
-                      <div className="max-h-48 overflow-y-auto py-1">
-                        {filteredCats.map(cat => (
-                          <button
-                            key={cat}
-                            type="button"
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary ${editForm.category === cat ? "text-primary font-medium" : "text-foreground"}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setEditForm(f => ({ ...f, category: cat, icon: CATEGORY_ICON_MAP[cat] ?? "Tag" }))
-                              setCatSearch("")
-                              setCatDropOpen(false)
-                            }}
-                          >
-                            {cat}
-                          </button>
-                        ))}
+                      {/* Search */}
+                      <div className="p-2">
+                        <input
+                          autoFocus
+                          value={catSearch}
+                          onChange={(e) => setCatSearch(e.target.value)}
+                          placeholder='Buscar categoría...'
+                          className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                      </div>
+
+                      <div className="max-h-52 overflow-y-auto">
+                        {/* Create new */}
                         {isNewCat && (
                           <button
                             type="button"
-                            className="w-full text-left px-3 py-2 text-sm text-primary flex items-center gap-1.5 hover:bg-primary/10 transition-colors font-medium border-t border-border"
-                            onMouseDown={(e) => e.preventDefault()}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-primary font-medium hover:bg-primary/10 transition-colors border-b border-border"
                             onClick={() => {
                               const newCat = catSearch.trim()
                               const updated = [...customCategories, newCat]
                               setCustomCategories(updated)
                               localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
                               setEditForm(f => ({ ...f, category: newCat, icon: "Tag" }))
-                              setCatSearch("")
                               setCatDropOpen(false)
+                              setCatSearch("")
                             }}
                           >
-                            <Plus className="w-3.5 h-3.5 shrink-0" />
+                            <Plus className="w-4 h-4 shrink-0" />
                             Crear &ldquo;{catSearch.trim()}&rdquo;
                           </button>
                         )}
-                        {filteredCats.length === 0 && !isNewCat && (
-                          <p className="px-3 py-2 text-sm text-muted-foreground/60">Sin resultados</p>
+
+                        {/* Custom categories */}
+                        {filteredCustomCats.length > 0 && (
+                          <>
+                            <p className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-secondary/30">Creadas</p>
+                            {filteredCustomCats.map(cat => (
+                              <button
+                                key={`custom-${cat}`}
+                                type="button"
+                                className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-secondary ${editForm.category === cat ? "text-primary font-medium" : "text-foreground"}`}
+                                onClick={() => {
+                                  setEditForm(f => ({ ...f, category: cat, icon: "Tag" }))
+                                  setCatDropOpen(false)
+                                  setCatSearch("")
+                                }}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </>
+                        )}
+
+                        {/* Standard categories */}
+                        {filteredStandardCats.length > 0 && (
+                          <>
+                            {filteredCustomCats.length > 0 && (
+                              <p className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-secondary/30 border-t border-border/50">Estándar</p>
+                            )}
+                            {filteredStandardCats.map(cat => (
+                              <button
+                                key={cat}
+                                type="button"
+                                className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-secondary ${editForm.category === cat ? "text-primary font-medium" : "text-foreground"}`}
+                                onClick={() => {
+                                  setEditForm(f => ({ ...f, category: cat, icon: CATEGORY_ICON_MAP[cat] ?? "Tag" }))
+                                  setCatDropOpen(false)
+                                  setCatSearch("")
+                                }}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </>
+                        )}
+
+                        {filteredStandardCats.length === 0 && filteredCustomCats.length === 0 && !isNewCat && (
+                          <p className="px-3 py-2.5 text-sm text-muted-foreground/60">Sin resultados</p>
                         )}
                       </div>
                     </motion.div>
