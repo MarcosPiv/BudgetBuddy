@@ -5,7 +5,6 @@ import dynamic from "next/dynamic"
 import { AppProvider, useApp } from "@/lib/app-context"
 import { LandingPage } from "@/components/landing-page"
 import { AuthPage } from "@/components/auth-page"
-import { NotificationManager } from "@/components/notification-manager"
 import { BiometricLock } from "@/components/biometric-lock"
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
@@ -103,7 +102,6 @@ function AppRouter() {
 export default function Home() {
   return (
     <AppProvider>
-      <NotificationManager />
       <AppRouter />
     </AppProvider>
   )

@@ -21,32 +21,6 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-// ── Push notifications ────────────────────────────────────────────────────
-self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {}
-  event.waitUntil(
-    self.registration.showNotification(data.title ?? 'BudgetBuddy', {
-      body: data.body ?? '',
-      icon: '/icon.svg',
-      badge: '/icon-maskable.svg',
-      tag: data.tag ?? 'budgetbuddy',
-      renotify: true,
-    })
-  )
-})
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const client of list) {
-        if ('focus' in client) return client.focus()
-      }
-      return clients.openWindow('/')
-    })
-  )
-})
-
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 

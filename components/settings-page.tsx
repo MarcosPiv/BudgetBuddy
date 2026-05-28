@@ -15,8 +15,6 @@ import {
   CheckCircle2,
   Sun,
   Moon,
-  Bell,
-  BellOff,
   ChevronDown,
   Fingerprint,
   Landmark,
@@ -29,7 +27,6 @@ import { PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES } from "@/components/dashboard/sha
 import { useBiometric } from "@/hooks/use-biometric"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
 import { useTheme } from "next-themes"
-import { useNotifications } from "@/hooks/use-notifications"
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "—"
@@ -147,24 +144,6 @@ export function SettingsPage() {
       setBiometricLoading(false)
     }
   }
-  const { isSupported: notifSupported, requestPermission } = useNotifications()
-
-  const [notifDaily, setNotifDaily] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_daily") === "true")
-  const [notifDailyTime, setNotifDailyTime] = useState(() => typeof window !== "undefined" ? (localStorage.getItem("bb_notif_daily_time") ?? "20:00") : "20:00")
-  const [notifBudget, setNotifBudget] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_budget") === "true")
-  const [notifRecurring, setNotifRecurring] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_recurring") === "true")
-  const [notifWeekly, setNotifWeekly] = useState(() => typeof window !== "undefined" && localStorage.getItem("bb_notif_weekly") === "true")
-
-  const handleNotifToggle = async (key: string, setter: (v: boolean) => void, current: boolean) => {
-    const next = !current
-    if (next) {
-      const granted = await requestPermission()
-      if (!granted) return
-    }
-    localStorage.setItem(key, next ? "true" : "false")
-    setter(next)
-  }
-
   const handleThemeChange = (next: string) => {
     const html = document.documentElement
     html.classList.add("theme-transitioning")
@@ -602,109 +581,6 @@ export function SettingsPage() {
                 )}
               </AnimatePresence>
             </div>
-
-            {/* Notifications */}
-            {notifSupported && (
-              <div className="flex flex-col gap-3">
-                <Label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Bell className="w-3.5 h-3.5" />
-                  Notificaciones
-                </Label>
-
-                <div className="rounded-xl border border-border bg-secondary/30 divide-y divide-border overflow-hidden">
-                  {/* Daily reminder */}
-                  <div className="flex items-center justify-between px-4 py-3 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">Recordatorio diario</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Recordarte registrar gastos</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <AnimatePresence>
-                        {notifDaily && (
-                          <motion.input
-                            type="time"
-                            value={notifDailyTime}
-                            onChange={(e) => { setNotifDailyTime(e.target.value); localStorage.setItem("bb_notif_daily_time", e.target.value) }}
-                            className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground outline-none focus:border-primary/60 tabular-nums cursor-pointer"
-                            initial={{ opacity: 0, width: 0 }}
-                            animate={{ opacity: 1, width: "auto" }}
-                            exit={{ opacity: 0, width: 0 }}
-                            transition={{ duration: 0.2 }}
-                          />
-                        )}
-                      </AnimatePresence>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={notifDaily}
-                        onClick={() => handleNotifToggle("bb_notif_daily", setNotifDaily, notifDaily)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifDaily ? "bg-primary" : "bg-muted"}`}
-                      >
-                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifDaily ? "translate-x-5" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Budget alert */}
-                  <div className="flex items-center justify-between px-4 py-3 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">Alerta de presupuesto</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Aviso al llegar al 90% del límite</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={notifBudget}
-                      onClick={() => handleNotifToggle("bb_notif_budget", setNotifBudget, notifBudget)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifBudget ? "bg-primary" : "bg-muted"}`}
-                    >
-                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifBudget ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
-                  </div>
-
-                  {/* Recurring reminder */}
-                  <div className="flex items-center justify-between px-4 py-3 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">Fijos mensuales</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Aviso el 1° de cada mes</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={notifRecurring}
-                      onClick={() => handleNotifToggle("bb_notif_recurring", setNotifRecurring, notifRecurring)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifRecurring ? "bg-primary" : "bg-muted"}`}
-                    >
-                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifRecurring ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
-                  </div>
-
-                  {/* Weekly summary */}
-                  <div className="flex items-center justify-between px-4 py-3 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">Resumen semanal</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Cada lunes: gasto de la semana anterior</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={notifWeekly}
-                      onClick={() => handleNotifToggle("bb_notif_weekly", setNotifWeekly, notifWeekly)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none ${notifWeekly ? "bg-primary" : "bg-muted"}`}
-                    >
-                      <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${notifWeekly ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
-                  </div>
-                </div>
-
-                {Notification.permission === "denied" && (
-                  <p className="text-[11px] text-destructive flex items-center gap-1.5">
-                    <BellOff className="w-3 h-3 shrink-0" />
-                    Notificaciones bloqueadas en el navegador. Habilitálas en Configuración del sitio.
-                  </p>
-                )}
-              </div>
-            )}
 
             {/* AI Provider + API Key */}
             <div className="flex flex-col gap-3">
