@@ -97,8 +97,13 @@ export function DashboardPage() {
 
   // ── Scroll-to-top button ─────────────────────────────────────────────────────
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const lastScrollY = useRef(0)
   useEffect(() => {
-    const onScroll = () => setShowScrollTop(window.scrollY > 300)
+    const onScroll = () => {
+      const y = window.scrollY
+      setShowScrollTop(y > 400 && y < lastScrollY.current)
+      lastScrollY.current = y
+    }
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
