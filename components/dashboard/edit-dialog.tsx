@@ -298,7 +298,6 @@ export function EditDialog({
                       {/* Search */}
                       <div className="p-2">
                         <input
-                          autoFocus
                           value={catSearch}
                           onChange={(e) => setCatSearch(e.target.value)}
                           placeholder='Buscar categoría...'

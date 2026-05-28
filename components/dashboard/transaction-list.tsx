@@ -366,7 +366,6 @@ export function TransactionList({
                         {/* Search input */}
                         <div className="p-2 pb-1.5">
                           <input
-                            autoFocus
                             value={categorySearch}
                             onChange={(e) => setCategorySearch(e.target.value)}
                             placeholder="Buscar o escribir categoría..."
