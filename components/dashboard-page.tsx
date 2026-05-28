@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown, ArrowUp,
+  MessageCircle, Settings, LogOut, Wallet, BarChart2, Loader2, WifiOff, RefreshCw, CheckCircle2, ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -95,18 +95,8 @@ export function DashboardPage() {
   // ── CSV import ───────────────────────────────────────────────────────────────
   const [showImportCSV, setShowImportCSV] = useState(false)
 
-  // ── Scroll-to-top button ─────────────────────────────────────────────────────
-  const [showScrollTop, setShowScrollTop] = useState(false)
-  const lastScrollY = useRef(0)
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY
-      setShowScrollTop(y > 400 && y < lastScrollY.current)
-      lastScrollY.current = y
-    }
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
+  // ── Type filter (Ingresos / Gastos cards) ────────────────────────────────────
+  const [typeFilter, setTypeFilter] = useState<"income" | "expense" | null>(null)
 
   // ── Accounts modal ───────────────────────────────────────────────────────────
   const [showAccountsModal, setShowAccountsModal] = useState(false)
@@ -264,16 +254,18 @@ export function DashboardPage() {
   }), [customRange.from, customRange.to])
 
   const displayedTransactions = useMemo(() => {
-    if (!searchQuery.trim()) return filteredTransactions
+    let result = typeFilter ? filteredTransactions.filter(tx => tx.type === typeFilter) : filteredTransactions
+    if (!searchQuery.trim()) return result
     const q = searchQuery.toLowerCase()
-    return filteredTransactions.filter(tx =>
+    return result.filter(tx =>
       tx.description.toLowerCase().includes(q) ||
       tx.category.toLowerCase().includes(q) ||
       (tx.observation?.toLowerCase().includes(q) ?? false),
     )
-  }, [filteredTransactions, searchQuery])
+  }, [filteredTransactions, searchQuery, typeFilter])
 
-  useEffect(() => { setShowAllTx(false) }, [filteredTransactions, searchQuery])
+  useEffect(() => { setShowAllTx(false) }, [filteredTransactions, searchQuery, typeFilter])
+  useEffect(() => { setTypeFilter(null) }, [timeFilter, customRange])
 
   const visibleTransactions = showAllTx ? displayedTransactions : displayedTransactions.slice(0, TX_PAGE)
   const hasMoreTx = displayedTransactions.length > TX_PAGE
@@ -958,6 +950,8 @@ export function DashboardPage() {
               totalIncome={totalIncome}
               balance={balance}
               formatCurrency={formatCurrency}
+              typeFilter={typeFilter}
+              onTypeFilter={setTypeFilter}
             />
 
             <CategoryChart
@@ -1178,25 +1172,6 @@ export function DashboardPage() {
               setShowFirstTxTooltip(true)
             }
           }} />
-        )}
-      </AnimatePresence>
-
-      {/* ── Scroll to top ────────────────────────────────────── */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            type="button"
-            aria-label="Volver al inicio"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="fixed bottom-24 right-4 z-40 flex items-center justify-center w-10 h-10 rounded-full bg-primary text-primary-foreground shadow-lg cursor-pointer"
-            initial={{ opacity: 0, scale: 0.7, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.7, y: 8 }}
-            transition={{ type: "spring", damping: 20, stiffness: 300 }}
-            whileTap={{ scale: 0.88 }}
-          >
-            <ArrowUp className="w-4 h-4" />
-          </motion.button>
         )}
       </AnimatePresence>
     </>
