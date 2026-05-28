@@ -10,6 +10,7 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 
 ### BudgetBuddy AI (asistente de chat)
 - **Registrar movimientos** — "gasté 3500 en almuerzo" o "cobré 200 USD"; la IA extrae monto, categoría, ícono y moneda automáticamente
+- **Detección de cuenta** — "pagué con MercadoPago" o "con Galicia" asocia el movimiento al medio de pago correcto; nunca lo usa como categoría
 - **Modificar desde el chat** — "al taxi de ayer, cambiá el monto a 2800" o "al gym, agregale la nota 'pago mensual'"
 - **Eliminar desde el chat** — "borrá el super de ayer"; la IA identifica la transacción y la elimina
 - **Marcar como recurrente** — "marcá el alquiler como recurrente" o "el gym ya no es fijo"
@@ -32,6 +33,17 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 - **Filtros temporales** — semana, mes, año, rango personalizado con calendario y presets rápidos (Hoy, Ayer, 7 días, 30 días, Este mes, Mes anterior)
 - **Gastos fijos** — marcá movimientos como recurrentes; sección dedicada en Analítica
 
+### Cuentas y medios de pago
+- **"¿Dónde está mi dinero?"** — panel de distribución de balance por cuenta/billetera; respeta el filtro temporal activo (semana, mes, año o rango personalizado)
+- **Catálogo de 50+ medios de pago argentinos** — Mercado Pago, Ualá, BBVA, Galicia, Santander, Brubank, Efectivo y más; organizados en Billetera Virtual, Banco Digital, Banco Privado, Banco Público, Cripto/Inversión y Efectivo
+- **Drill-down por cuenta** — tocá una cuenta para ver el listado de movimientos de ese período con balance, ingresos y gastos detallados
+- **Detección automática** — la IA detecta el medio de pago desde el texto y lo asigna al campo `account` sin confundirlo con la categoría del gasto
+- **Cuenta predeterminada** — configurable en Ajustes; se usa cuando no se detecta ningún medio de pago explícito
+
+### Importar CSV
+- Importación masiva de transacciones desde archivos CSV
+- Mapeo de columnas interactivo con previsualización antes de confirmar
+
 ### Multi-moneda ARS / USD
 - Cotización en vivo vía [DolarAPI](https://dolarapi.com): Blue, Oficial, Tarjeta, MEP
 - `txRate` se bloquea al momento de cargar cada movimiento — el historial no cambia si el dólar se mueve
@@ -44,6 +56,11 @@ Rastreador de gastos con IA para la economía argentina. Registrá movimientos p
 - **Exportar CSV** — BOM-prefixed UTF-8, compatible con Excel; columnas: Fecha, Tipo, Descripción, Categoría, Monto, Moneda, Nota
 - **Exportar PDF** — genera un documento HTML completo con tarjetas de resumen, tabla por categoría y lista de movimientos; sin dependencias externas
 - **Selector de rango** — presets (mes actual, mes anterior, año) + rango personalizado con calendario
+
+### Rendimiento — carga en dos fases
+- **Phase 1 (login):** solo se cargan los últimos 6 meses de transacciones — el dashboard aparece de inmediato sin importar cuántos años de datos haya
+- **Phase 2 (background):** el historial completo se carga automáticamente al abrir Analítica o al usar el filtro "Año" / rango personalizado en el Dashboard
+- Índice `(user_id, date DESC)` en Supabase garantiza queries O(log n) en ambas fases
 
 ### Offline y sincronización
 - Operaciones en cola local (`localStorage`) cuando no hay conexión
@@ -93,7 +110,7 @@ Lo mismo aplica para editar o eliminar sin conexión.
 
 | Capa | Tecnología |
 |------|-----------|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Auth + DB | Supabase (PostgreSQL + RLS) |
 | Estilos | Tailwind CSS v4 + shadcn/ui |
 | Animaciones | Framer Motion |
@@ -114,7 +131,8 @@ app/
 components/
   dashboard-page.tsx        # Orquestador del dashboard (estado + handlers)
   dashboard/
-    shared.tsx              # Constantes, tipos y utilidades compartidas
+    shared.tsx              # Constantes (iconMap, VALID_CATEGORIES, PAYMENT_ACCOUNTS),
+                            # tipos (ChatMessage, Attachment, PaymentAccount) y utilidades
     filter-bar.tsx          # Chips de filtro temporal + calendario inline
     summary-cards.tsx       # Tarjetas de resumen (presupuesto / ingresos+gastos)
     category-chart.tsx      # Breakdown de gastos por categoría
@@ -125,9 +143,12 @@ components/
     edit-dialog.tsx         # Formulario de edición de transacción
     delete-dialog.tsx       # Confirmación de eliminación
     camera-modal.tsx        # Cámara en vivo para capturar tickets
+    accounts-modal.tsx      # "¿Dónde está mi dinero?" — balance por cuenta + drill-down
+    import-csv-modal.tsx    # Importación masiva desde CSV
     onboarding-overlay.tsx  # Overlay de bienvenida
     receipt-image.tsx       # Imagen de comprobante desde Supabase Storage
     exchange-type-badge.tsx # Badge de tipo de cambio (Blue / Oficial / Tarjeta / MEP)
+    skeleton.tsx            # Skeletons de carga
   settings-page.tsx         # Tema, notificaciones, IA, tipo de cambio, modo perfil
   analytics-page.tsx        # Gráficos de tendencia y categoría; gastos fijos; exportar
   auth-page.tsx             # Login, registro, recuperación de contraseña
@@ -136,6 +157,7 @@ components/
 hooks/
   use-exchange-rate.ts      # Cotizaciones en vivo desde DolarAPI
   use-notifications.ts      # Permisos y envío de notificaciones push
+  use-chat-handler.ts       # Lógica del chat: intents de delete/update/recurring/register
 lib/
   app-context.tsx           # Estado global (React Context + Supabase + offline queue)
   ai.ts                     # callAI / callAIChat / callAIUpdateDetect /

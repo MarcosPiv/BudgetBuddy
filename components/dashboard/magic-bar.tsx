@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Sparkles, Send, StickyNote, ImagePlus, Camera,
   Mic, Loader2, DollarSign, Trash2, Settings,
-  CalendarIcon, PenLine, Paperclip, Lock, FileText, ChevronLeft, Landmark
+  CalendarIcon, PenLine, Paperclip, Lock, FileText, ChevronLeft
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +13,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { es } from "date-fns/locale"
 import type { ExchangeRateType } from "@/lib/app-context"
-import { PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES } from "./shared"
 import type { Attachment } from "./shared"
 
 interface RateOption {
@@ -61,8 +60,6 @@ interface MagicBarProps {
   aiError: string | null
   onManualEntry: () => void
   audioStream: MediaStream | null
-  selectedAccount: string | null
-  onSelectAccount: (v: string | null) => void
 }
 
 // Canvas-based waveform — no React state updates during animation
@@ -169,13 +166,10 @@ export function MagicBar({
   aiError,
   onManualEntry,
   audioStream,
-  selectedAccount,
-  onSelectAccount,
   processingLabel = "Analizando con IA...",
 }: MagicBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
-  const [showAccountPicker, setShowAccountPicker] = useState(false)
 
   // Precompute preset dates for inline chips
   const presetDates = [0, 1, 2].map(days => {
@@ -858,51 +852,6 @@ export function MagicBar({
                   <StickyNote className="w-3 h-3 shrink-0" />
                   <span>Nota</span>
                 </button>
-
-                <Popover open={showAccountPicker} onOpenChange={setShowAccountPicker}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                        selectedAccount
-                          ? "border-accent/40 bg-accent/10 text-accent"
-                          : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
-                      }`}
-                    >
-                      <Landmark className="w-3 h-3 shrink-0" />
-                      <span className="max-w-[72px] truncate">{selectedAccount ?? "Cuenta"}</span>
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-52 p-0 bg-card border-border max-h-72 overflow-y-auto" align="start" side="top">
-                    <button
-                      type="button"
-                      onClick={() => { onSelectAccount(null); setShowAccountPicker(false) }}
-                      className={`w-full text-left px-3 py-2.5 text-xs border-b border-border hover:bg-secondary transition-colors cursor-pointer ${!selectedAccount ? "text-primary font-medium" : "text-muted-foreground"}`}
-                    >
-                      Auto (detectar)
-                    </button>
-                    {ACCOUNT_CATEGORIES.map(cat => {
-                      const items = PAYMENT_ACCOUNTS.filter(a => a.category === cat)
-                      return (
-                        <div key={cat}>
-                          <p className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/50 sticky top-0">
-                            {cat}
-                          </p>
-                          {items.map(acc => (
-                            <button
-                              key={acc.id}
-                              type="button"
-                              onClick={() => { onSelectAccount(acc.name); setShowAccountPicker(false) }}
-                              className={`w-full text-left px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer ${selectedAccount === acc.name ? "text-primary font-medium" : "text-foreground"}`}
-                            >
-                              {acc.name}
-                            </button>
-                          ))}
-                        </div>
-                      )
-                    })}
-                  </PopoverContent>
-                </Popover>
 
                 {magicInput.length > 0 && (
                   <div className="ml-auto flex items-center pr-1">

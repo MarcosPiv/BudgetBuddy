@@ -35,8 +35,9 @@ All global state lives in `lib/app-context.tsx` (React Context). Key state field
 - `currentView` — controls which SPA view renders
 - `user` — Supabase `User | null`
 - `loadingAuth` — true while Supabase session is resolving on mount
-- `transactions` — array persisted in Supabase, loaded on login
+- `transactions` — array persisted in Supabase, loaded in two phases on login (see Two-Phase Loading below)
 - `userName`, `monthlyBudget`, `profileMode` (`standard` | `expenses_only`) — loaded from `profiles` table
+- `defaultAccount` — the user's configured default payment account (loaded from `profiles.default_account`)
 - `aiProvider` — `"claude" | "openai" | "gemini"` — which LLM to use
 - `apiKeyClaude`, `apiKeyOpenAI`, `apiKeyGemini` — per-provider API keys (stored in `profiles`)
 - `apiKey` — **computed** getter, returns the active provider's key; used by dashboard for AI checks
@@ -46,6 +47,9 @@ All global state lives in `lib/app-context.tsx` (React Context). Key state field
 - `timeFilter` — `week | month | year | custom`
 - `customRange` — `{ from: Date; to: Date }`
 - `navDirection` — `"forward" | "back"` — set before each view transition; used in `app/page.tsx` to skip the enter animation when navigating back (matches native OS gesture feel)
+- `isLoadingHistory` — true while Phase 2 (older transactions) is being fetched
+- `hasMoreTransactions` — true if there are transactions older than the Phase 1 cutoff not yet loaded
+- `loadMoreTransactions` — triggers Phase 2 fetch; idempotent (guards with `isLoadingHistory` and `hasMoreTransactions`)
 
 `currentViewRef` (useRef) mirrors `currentView` and is used inside async auth callbacks to avoid stale-closure bugs. The view is also persisted to `sessionStorage` (`bb_view`) so it survives tab-discard/remount.
 
@@ -66,18 +70,21 @@ Transaction {
   txRate?: number             // ARS rate locked at the moment of the transaction — immutable
   exchangeRateType?: "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL" | null
   isRecurring?: boolean       // marks transaction as a monthly fixed expense/income
+  account?: string            // payment method / bank / wallet name (e.g. "Mercado Pago", "BBVA", "Efectivo")
 }
 ```
 
 `txRate` is immutable once saved — it represents the exact rate used at transaction time, so historical ARS totals don't change if the dollar moves.
+
+`account` is the payment method used for the transaction. It is separate from `category`. Banks, wallets, and payment apps (Mercado Pago, Ualá, BBVA, etc.) go in `account`, never in `category`.
 
 ### Supabase Backend
 
 Auth and data are fully backed by Supabase (project `budgetbuddy`, region `sa-east-1`).
 
 **Tables:**
-- `profiles` — per-user settings: `user_name`, `monthly_budget`, `profile_mode`, `exchange_rate_mode`, `usd_rate`, `ai_provider`, `api_key` (Claude), `api_key_openai`, `api_key_gemini`
-- `transactions` — all transaction fields in snake_case, `user_id` FK with RLS; includes `is_recurring boolean DEFAULT false`
+- `profiles` — per-user settings: `user_name`, `monthly_budget`, `profile_mode`, `exchange_rate_mode`, `usd_rate`, `ai_provider`, `api_key` (Claude), `api_key_openai`, `api_key_gemini`, `default_account`
+- `transactions` — all transaction fields in snake_case, `user_id` FK with RLS; includes `is_recurring boolean DEFAULT false`, `account TEXT`
 
 **Auth flows:**
 - Email/password signup + login via `supabase.auth.signInWithPassword` / `signUp`
@@ -108,6 +115,21 @@ NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
+### Two-Phase Transaction Loading
+
+`loadTransactions` (called on login) loads only the last 6 months — enough for all dashboard features. A parallel `count` query checks whether older data exists and sets `hasMoreTransactions`.
+
+`loadMoreTransactions` fetches everything older than the cutoff and merges into `transactions` (dedup by `id`). It is triggered automatically:
+- On mount of `AnalyticsPage` (needed for 12-month trend + yearly summaries)
+- When `timeFilter` changes to `year` or `custom` in `DashboardPage`
+- Manually via the "Cargar transacciones anteriores" button in `TransactionList` when client-side pages are exhausted
+
+`historyCutoffRef` (useRef) stores the cutoff ISO date string calculated at login so both phases use the exact same boundary (no gaps, no overlaps).
+
+A Supabase index `transactions_user_date_idx ON transactions (user_id, date DESC)` makes both filtered queries O(log n).
+
+Users with less than 6 months of data: `hasMoreTransactions = false` → Phase 2 never fires.
+
 ### Exchange Rate System
 
 - `hooks/use-exchange-rate.ts` — custom hook that fetches from `https://dolarapi.com/v1/dolares`
@@ -137,6 +159,37 @@ Three LLM providers are supported. The active provider is selected in Settings:
 **Magic Bar fallback to chat**: when `valid.length === 0` (AI returned `type: "unknown"`):
 - If only image with no text → shows error "No reconocí una transacción en la imagen"
 - Otherwise → opens chat panel and calls `submitChatMessage(textInput, undefined, true)` with `force=true` to bypass `isChatProcessing` guard (100ms delay ensures panel is mounted)
+
+### SYSTEM_PROMPT rules (lib/ai.ts)
+
+The main `SYSTEM_PROMPT` used by `callAI` governs how the AI parses free-text into transactions. Key rules to be aware of when editing:
+
+- **Commerce → category**: when the user mentions a store (e.g. "en MaxiLibrerias"), the AI uses it as context to pick the right category. **Exception**: bank/wallet names (Mercado Pago, Ualá, BBVA, Galicia, Santander, Efectivo, etc.) are **never** categories — they always go to the `account` field. Adding them to `category` is explicitly forbidden.
+- **`account` field**: populated when the user mentions the payment method ("pagué con MercadoPago", "con Galicia", "en efectivo"). The AI must not conflate payment method with spending category. If the text says "gasté en MercadoPago", the `account` should be `"Mercado Pago"` and the `category` should reflect the type of purchase (e.g. `"General"`).
+- **`daysAgo`**: always included in the response (default 0 = today). The prompt instructs the AI to compute relative dates from the `Fecha de hoy` line injected by `callAI` at call time.
+- **`suggestRecurring`**: always included (true for rent, salary, subscriptions, utilities).
+- **`suggestedCurrency` / `suggestedExRateType`**: included only when USD is explicitly mentioned.
+- **Multiple transactions**: split when ≥2 distinct amounts or establishments connected by "y", "después", "también", etc.
+
+### Accounts & Payment Methods
+
+`components/dashboard/accounts-modal.tsx` — "¿Dónde está mi dinero?" bottom sheet. Key behaviors:
+
+- Receives `filteredTransactions` (the already time-filtered array from `dashboard-page.tsx`) — so the balance shown always matches the active time period (week/month/year/custom range).
+- Computes per-account `income`, `expenses`, and `balance` from the filtered transactions. Accounts are resolved against `PAYMENT_ACCOUNTS` to get their display category (Billetera Virtual, Banco Privado, etc.).
+- **Drill-down**: clicking an account row slides in a detail panel (`AnimatePresence` + `x: "100%"` spring) listing all transactions for that account in the period. The panel has a back button (`ArrowLeft`) to return to the account list.
+- `selectedAccountName` state is reset when the modal closes (backdrop click or X button).
+
+`components/dashboard/shared.tsx` exports:
+- `PAYMENT_ACCOUNTS: PaymentAccount[]` — 50+ Argentine banks, digital wallets, and fintech apps with normalized names and keyword lists for text detection
+- `ACCOUNT_CATEGORIES` — ordered list of account category labels
+- `detectAccountFromText(text)` — client-side keyword scan; returns the normalized account name or `undefined`
+- `PaymentAccount` type — `{ id, name, category, keywords }`
+
+Account resolution priority in `handleMagicSubmit` (dashboard-page.tsx):
+1. AI-detected (`result.account` from the SYSTEM_PROMPT output)
+2. Client-side keyword scan (`detectAccountFromText(textInput)`)
+3. User's configured `defaultAccount` (from `profiles.default_account`)
 
 ### Theme System
 
@@ -210,16 +263,21 @@ app/
   reset-password/
     page.tsx                  # Standalone page for password recovery flow
 components/
-  dashboard-page.tsx          # Orchestrator: all shared state + handlers + chat intent routing (~1150 líneas)
+  dashboard-page.tsx          # Orchestrator: all shared state + handlers + chat intent routing
   dashboard/                  # Sub-componentes del dashboard (extraídos del orquestador)
-    shared.tsx                # Constantes (iconMap, VALID_CATEGORIES), tipos (ChatMessage, Attachment),
-                              # utilidades (formatDate, formatDateShort, fileToBase64, compressImage)
+    shared.tsx                # Constantes (iconMap, VALID_CATEGORIES, PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES),
+                              # tipos (ChatMessage, Attachment, PaymentAccount),
+                              # utilidades (formatDate, formatDateShort, fileToBase64, compressImage,
+                              #             detectAccountFromText, formatCurrency)
     exchange-type-badge.tsx   # Badge de tipo de cambio (Blue / Tarjeta / Oficial / MEP / Manual)
     receipt-image.tsx         # Imagen de comprobante con URL firmada desde Supabase Storage
     onboarding-overlay.tsx    # Overlay de bienvenida con pasos animados (3 steps)
     swipe-card.tsx            # Wrapper de swipe con useMotionValue/useTransform; hints de editar/eliminar
     delete-dialog.tsx         # AlertDialog de confirmación de eliminación
     camera-modal.tsx          # Modal de cámara en vivo para capturar tickets
+    accounts-modal.tsx        # "¿Dónde está mi dinero?" — balance por cuenta (filtrado por período) + drill-down
+    import-csv-modal.tsx      # Importación masiva de transacciones desde CSV
+    skeleton.tsx              # Skeletons de carga para el dashboard
     summary-cards.tsx         # Tarjetas de resumen: modo presupuesto o ingresos+gastos
     category-chart.tsx        # Breakdown colapsable de gastos por categoría con barras animadas
     filter-bar.tsx            # Chips de filtro temporal (semana/mes/año/custom) + calendario inline
@@ -240,6 +298,7 @@ components/
 hooks/
   use-exchange-rate.ts        # DolarAPI integration hook
   use-notifications.ts        # Notification permission + showNotification via SW
+  use-chat-handler.ts         # Chat intent routing logic (delete/update/recurring/register)
   use-mobile.ts
   use-toast.ts
 lib/
@@ -261,11 +320,12 @@ public/
 
 Los sub-componentes en `components/dashboard/` son puramente presentacionales o tienen estado local mínimo:
 
-- **`shared.tsx`** — sin JSX, solo exports de constantes/tipos/utilidades usadas por múltiples sub-componentes.
+- **`shared.tsx`** — sin JSX, solo exports de constantes/tipos/utilidades usadas por múltiples sub-componentes. Incluye el catálogo completo de medios de pago argentinos (`PAYMENT_ACCOUNTS`) y la función `detectAccountFromText`.
+- **`accounts-modal.tsx`** — recibe `filteredTransactions` (ya filtradas por el período activo); tiene estado local `selectedAccountName` para el drill-down.
 - **`swipe-card.tsx`** — tiene su propio `useMotionValue`/`useTransform` (no puede ser un hook por las reglas de React), recibe `onDragStart`/`onDragEnd` como callbacks.
 - **`edit-dialog.tsx`** — exporta también el tipo `EditForm` que el orquestador usa para su `useState<EditForm>`.
 - **`transaction-list.tsx`** — recibe `dragActiveRef` y `lpTimerRef` como refs mutables para coordinar el gesto de swipe con el click/expand sin causar re-renders.
-- **`magic-bar.tsx`** — recibe `galleryInputRef` y `cameraInputRef` desde el orquestador para poder hacer `.click()` sobre los inputs ocultos.
+- **`magic-bar.tsx`** — recibe `galleryInputRef` y `cameraInputRef` desde el orquestador para poder hacer `.click()` sobre los inputs ocultos. No tiene selector de cuenta propio — la cuenta se detecta automáticamente por la IA o por keywords.
 
 El patrón de prop drilling explícito (sin Context) es intencional: cada componente declara exactamente qué necesita, lo que facilita el testing y el rastreo de dependencias.
 

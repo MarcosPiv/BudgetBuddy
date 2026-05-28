@@ -132,7 +132,7 @@ Reglas generales:
 - Si hay audio: transcribí y analizá el contenido
 - type "income" = cobro, ingreso, salario, venta, me pagaron, transferencia recibida
 - type "expense" = gasto, compra, pago, transferencia enviada, gasté
-- Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") aplicalo como contexto de categoría
+- Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") usalo como contexto para elegir la categoría correcta. EXCEPCIÓN CRÍTICA: nombres de bancos, billeteras virtuales y medios de pago (Mercado Pago, Ualá, BBVA, Galicia, Santander, Efectivo, Naranja X, Brubank, etc.) NUNCA son categorías — siempre van al campo account. Si el texto dice "gasté en Mercado Pago", determinar la categoría por el tipo de gasto (o usar "General") y poner account: "Mercado Pago".
 - category y icon según el tema:
   * Comida/supermercado/delivery → "Comida", "ShoppingCart"
   * Transporte/nafta/peaje/uber/taxi/colectivo → "Transporte", "Car"
@@ -173,9 +173,10 @@ Campo suggestedExRateType (incluir SOLO si se menciona explícitamente el tipo d
 
 Campo account (incluir SOLO cuando se menciona explícitamente el banco o billetera utilizado):
 - Valor: nombre normalizado del medio de pago (ej: "Banco Galicia", "Mercado Pago", "BBVA", "Efectivo")
-- Detectar en frases como: "con Galicia", "por Mercado Pago", "del BBVA", "con el débito del Santander", "con la de Macro", "en efectivo", "pagué con Ualá"
+- Detectar en frases como: "con Galicia", "por Mercado Pago", "del BBVA", "con el débito del Santander", "con la de Macro", "en efectivo", "pagué con Ualá", "gasté en MercadoPago"
 - Si es imagen de ticket con logo/nombre de banco visible: incluirlo
 - Omitir completamente si no se menciona ningún banco, billetera o medio de pago
+- IMPORTANTE: estos nombres de medios de pago NUNCA deben aparecer en el campo category
 
 Campo observation (incluir SOLO cuando se detectan cuotas o financiación):
 - "en N cuotas de X" → amount: X (monto por cuota), observation: "Cuota 1/N"

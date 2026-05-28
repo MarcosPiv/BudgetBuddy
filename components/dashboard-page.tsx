@@ -97,7 +97,6 @@ export function DashboardPage() {
 
   // ── Accounts modal ───────────────────────────────────────────────────────────
   const [showAccountsModal, setShowAccountsModal] = useState(false)
-  const [selectedMagicAccount, setSelectedMagicAccount] = useState<string | null>(null)
 
   // ── Live camera ──────────────────────────────────────────────────────────────
   const [showCamera, setShowCamera] = useState(false)
@@ -335,7 +334,7 @@ export function DashboardPage() {
       manualRate: newManualRate,
       observation: "",
       isRecurring: false,
-      account: selectedMagicAccount || defaultAccount,
+      account: defaultAccount,
     })
     setShowManualEntry(true)
   }
@@ -488,9 +487,8 @@ export function DashboardPage() {
           }
         }
 
-        // Account: manual override > AI-detected > keyword match > default
+        // Account: AI-detected > keyword match > default
         const detectedAccount =
-          selectedMagicAccount ||
           result.account ||
           detectAccountFromText(textInput) ||
           defaultAccount
@@ -1040,8 +1038,6 @@ export function DashboardPage() {
           stopRecording={stopRecording}
           aiError={aiError}
           onManualEntry={() => openManualEntry()}
-          selectedAccount={selectedMagicAccount}
-          onSelectAccount={setSelectedMagicAccount}
         />
 
 
@@ -1052,7 +1048,7 @@ export function DashboardPage() {
         <AccountsModal
           open={showAccountsModal}
           onClose={() => setShowAccountsModal(false)}
-          transactions={transactions}
+          transactions={filteredTransactions}
           usdRate={usdRate}
         />
 
