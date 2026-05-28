@@ -86,13 +86,14 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 // ── Daily projection tooltip ───────────────────────────────────────────────
-function DailyProjectionTooltip({ active, payload, label }: { active?: boolean; payload?: { dataKey: string; value: number; color: string }[]; label?: string }) {
+function DailyProjectionTooltip({ active, payload }: { active?: boolean; payload?: { dataKey: string; value: number; color: string; payload: { dateLabel: string } }[] }) {
   if (!active || !payload?.length) return null
   const real = payload.find(p => p.dataKey === "real")
   const projected = payload.find(p => p.dataKey === "projected")
+  const dateLabel = payload[0]?.payload?.dateLabel ?? ""
   return (
     <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
-      <p className="font-semibold text-foreground mb-1.5">Día {label}</p>
+      <p className="font-semibold text-foreground mb-1.5 capitalize">{dateLabel}</p>
       {real?.value != null && (
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: real.color }} />
@@ -112,11 +113,12 @@ function DailyProjectionTooltip({ active, payload, label }: { active?: boolean; 
 }
 
 // ── Simple bar/area tooltip ────────────────────────────────────────────────────
-function SimpleValueTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+function SimpleValueTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; payload?: { dateLabel?: string } }[]; label?: string }) {
   if (!active || !payload?.length) return null
+  const displayLabel = label || payload[0]?.payload?.dateLabel || ""
   return (
     <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
-      <p className="font-semibold text-foreground mb-0.5">{label}</p>
+      <p className="font-semibold text-foreground mb-0.5">{displayLabel}</p>
       <p className="text-muted-foreground">{fmtArs(payload[0].value)}</p>
     </div>
   )
@@ -559,7 +561,8 @@ export function AnalyticsPage() {
             })
             .reduce((a, tx) => a + toArs(tx), 0)
           const showLabel = i === 0 || (i + 1) % 7 === 0 || i === diffDays - 1
-          return { label: showLabel ? `${d.getDate()}/${d.getMonth() + 1}` : "", value: Math.round(total) }
+          const fullLabel = `${d.getDate()}/${d.getMonth() + 1}`
+          return { label: showLabel ? fullLabel : "", dateLabel: fullLabel, value: Math.round(total) }
         })
       } else {
         const months: { label: string; value: number }[] = []
@@ -697,9 +700,11 @@ export function AnalyticsPage() {
       const projected =
         day < today || remainingDays === 0 ? null
         : Math.round(currentExpenses + (projectedTotal - currentExpenses) * (day - daysElapsed) / remainingDays)
+      const dateLabel = new Date(curYear, curMonth, day).toLocaleDateString("es-AR", { day: "numeric", month: "long" })
       return {
         day,
         label: showLabel ? String(day) : "",
+        dateLabel,
         real: isFuture ? null : Math.round(cumulative),
         projected,
       }
