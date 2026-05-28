@@ -403,7 +403,6 @@ export function DashboardPage() {
     setObservation("")
     setShowObservation(false)
     setNewTxDate(null)
-    setSelectedMagicAccount(null)
 
     try {
       const aiAttachments: AIAttachment[] = await Promise.all(

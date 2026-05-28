@@ -1,7 +1,7 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { Calendar } from "@/components/ui/calendar"
+import { CalendarWithNav } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
 import type { TimeFilter } from "@/lib/app-context"
@@ -124,16 +124,10 @@ export function FilterBar({
                 )}
               </div>
 
-              <Calendar
-                mode="range"
+              <CalendarWithNav
                 selected={calendarRange}
-                onSelect={setCalendarRange as (r: DateRange | undefined) => void}
+                onSelect={setCalendarRange}
                 locale={es}
-                numberOfMonths={1}
-                captionLayout="dropdown"
-                startMonth={new Date(2000, 0)}
-                endMonth={new Date()}
-                className="rounded-xl bg-transparent mx-auto"
                 disabled={{ after: new Date() }}
               />
               <button

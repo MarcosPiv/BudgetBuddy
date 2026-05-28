@@ -40,7 +40,7 @@ import {
 } from "recharts"
 import { useApp } from "@/lib/app-context"
 import type { Transaction } from "@/lib/app-context"
-import { Calendar } from "@/components/ui/calendar"
+import { CalendarWithNav } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
 import { ExpenseHeatmap } from "@/components/analytics/expense-heatmap"
@@ -1075,16 +1075,10 @@ export function AnalyticsPage() {
                     )}
                   </div>
 
-                  <Calendar
-                    mode="range"
+                  <CalendarWithNav
                     selected={exportCalRange}
                     onSelect={setExportCalRange}
                     locale={es}
-                    numberOfMonths={1}
-                    captionLayout="dropdown"
-                    startMonth={new Date(2000, 0)}
-                    endMonth={new Date()}
-                    className="rounded-xl bg-transparent mx-auto"
                     disabled={{ after: new Date() }}
                   />
 

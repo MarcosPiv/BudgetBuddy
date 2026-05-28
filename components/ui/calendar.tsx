@@ -7,6 +7,8 @@ import {
   ChevronRightIcon,
 } from 'lucide-react'
 import { DayButton, DayPicker, getDefaultClassNames } from 'react-day-picker'
+import type { DateRange } from 'react-day-picker'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -210,4 +212,232 @@ function CalendarDayButton({
   )
 }
 
-export { Calendar, CalendarDayButton }
+// ── CalendarWithNav ──────────────────────────────────────────────────────────
+// A Calendar wrapper with a custom month/year picker header, replacing the
+// native <select> dropdowns with a polished inline grid selector.
+
+const MONTH_NAMES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+const MONTH_ABBR_ES = [
+  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
+]
+
+function shiftMonth(date: Date, delta: number): Date {
+  const d = new Date(date)
+  d.setMonth(d.getMonth() + delta)
+  return d
+}
+
+interface CalendarWithNavProps {
+  selected?: DateRange | undefined
+  onSelect?: (range: DateRange | undefined) => void
+  disabled?: React.ComponentProps<typeof DayPicker>['disabled']
+  locale?: React.ComponentProps<typeof DayPicker>['locale']
+  className?: string
+}
+
+function CalendarWithNav({
+  selected,
+  onSelect,
+  disabled,
+  locale,
+  className,
+}: CalendarWithNavProps) {
+  const today = React.useMemo(() => new Date(), [])
+  const maxYear = today.getFullYear()
+  const maxMonth = today.getMonth()
+
+  const [viewDate, setViewDate] = React.useState<Date>(() => {
+    const ref = selected?.from ?? new Date()
+    return new Date(ref.getFullYear(), ref.getMonth())
+  })
+
+  const [pickerMode, setPickerMode] = React.useState<'days' | 'months' | 'years'>('days')
+
+  const viewMonth = viewDate.getMonth()
+  const viewYear = viewDate.getFullYear()
+  const isAtMaxMonth = viewYear === maxYear && viewMonth === maxMonth
+
+  const years = React.useMemo(
+    () => Array.from({ length: maxYear - 1999 }, (_, i) => maxYear - i),
+    [maxYear],
+  )
+
+  return (
+    <div className={cn('select-none', className)}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-1 pb-1">
+        {pickerMode === 'days' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setViewDate(shiftMonth(viewDate, -1))}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer shrink-0"
+              aria-label="Mes anterior"
+            >
+              <ChevronLeftIcon className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => setPickerMode('months')}
+                className="px-2.5 py-1.5 rounded-lg text-sm font-semibold hover:bg-secondary transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {MONTH_NAMES_ES[viewMonth]}
+                <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerMode('years')}
+                className="px-2.5 py-1.5 rounded-lg text-sm font-semibold hover:bg-secondary transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {viewYear}
+                <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => !isAtMaxMonth && setViewDate(shiftMonth(viewDate, 1))}
+              disabled={isAtMaxMonth}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default shrink-0"
+              aria-label="Mes siguiente"
+            >
+              <ChevronRightIcon className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </>
+        ) : pickerMode === 'months' ? (
+          <>
+            <button
+              type="button"
+              disabled={viewYear <= 2000}
+              onClick={() => setViewDate(new Date(viewYear - 1, viewMonth))}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default shrink-0"
+              aria-label="Año anterior"
+            >
+              <ChevronLeftIcon className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPickerMode('years')}
+              className="px-2.5 py-1.5 rounded-lg text-sm font-semibold hover:bg-secondary transition-colors cursor-pointer flex items-center gap-1"
+            >
+              {viewYear}
+              <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              disabled={viewYear >= maxYear}
+              onClick={() => setViewDate(new Date(viewYear + 1, viewMonth))}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default shrink-0"
+              aria-label="Año siguiente"
+            >
+              <ChevronRightIcon className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </>
+        ) : (
+          <p className="w-full text-center text-sm font-semibold text-foreground py-1">
+            Seleccioná el año
+          </p>
+        )}
+      </div>
+
+      {/* Content */}
+      <AnimatePresence mode="wait" initial={false}>
+        {pickerMode === 'days' && (
+          <motion.div
+            key="days"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+          >
+            <Calendar
+              mode="range"
+              selected={selected}
+              onSelect={onSelect as any}
+              locale={locale}
+              disabled={disabled}
+              month={viewDate}
+              onMonthChange={setViewDate}
+              hideNavigation
+              classNames={{ month_caption: 'hidden' }}
+              className="bg-transparent mx-auto"
+            />
+          </motion.div>
+        )}
+
+        {pickerMode === 'months' && (
+          <motion.div
+            key="months"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="grid grid-cols-3 gap-1.5 px-3 pt-1 pb-3"
+          >
+            {MONTH_ABBR_ES.map((abbr, idx) => {
+              const isActive = idx === viewMonth
+              const isDisabled = viewYear === maxYear && idx > maxMonth
+              return (
+                <button
+                  key={abbr}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    setViewDate(new Date(viewYear, idx))
+                    setPickerMode('days')
+                  }}
+                  className={cn(
+                    'py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer',
+                    isDisabled ? 'opacity-30 cursor-not-allowed' :
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'hover:bg-secondary text-foreground',
+                  )}
+                >
+                  {abbr}
+                </button>
+              )
+            })}
+          </motion.div>
+        )}
+
+        {pickerMode === 'years' && (
+          <motion.div
+            key="years"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="grid grid-cols-4 gap-1.5 px-3 pt-1 pb-3 max-h-[196px] overflow-y-auto [scrollbar-width:thin]"
+          >
+            {years.map(year => (
+              <button
+                key={year}
+                type="button"
+                onClick={() => {
+                  setViewDate(new Date(year, viewMonth))
+                  setPickerMode('months')
+                }}
+                className={cn(
+                  'py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer',
+                  year === viewYear
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'hover:bg-secondary text-foreground',
+                )}
+              >
+                {year}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+export { Calendar, CalendarDayButton, CalendarWithNav }
