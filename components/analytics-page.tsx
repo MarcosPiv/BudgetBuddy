@@ -1081,6 +1081,9 @@ export function AnalyticsPage() {
                     onSelect={setExportCalRange}
                     locale={es}
                     numberOfMonths={1}
+                    captionLayout="dropdown"
+                    startMonth={new Date(2000, 0)}
+                    endMonth={new Date()}
                     className="rounded-xl bg-transparent mx-auto"
                     disabled={{ after: new Date() }}
                   />

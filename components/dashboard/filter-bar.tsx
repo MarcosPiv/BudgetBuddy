@@ -130,6 +130,9 @@ export function FilterBar({
                 onSelect={setCalendarRange as (r: DateRange | undefined) => void}
                 locale={es}
                 numberOfMonths={1}
+                captionLayout="dropdown"
+                startMonth={new Date(2000, 0)}
+                endMonth={new Date()}
                 className="rounded-xl bg-transparent mx-auto"
                 disabled={{ after: new Date() }}
               />
