@@ -62,6 +62,8 @@ interface TransactionListProps {
   isLoadingHistory?: boolean
   hasMoreTransactions?: boolean
   onLoadMoreHistory?: () => void
+  activeCategoryFilter?: string | null
+  onClearCategoryFilter?: () => void
 }
 
 export function TransactionList({
@@ -87,6 +89,8 @@ export function TransactionList({
   isLoadingHistory,
   hasMoreTransactions,
   onLoadMoreHistory,
+  activeCategoryFilter,
+  onClearCategoryFilter,
 }: TransactionListProps) {
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
   const [categorySearch, setCategorySearch] = useState("")
@@ -128,12 +132,24 @@ export function TransactionList({
       {/* Header row */}
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Movimientos{" "}
-            {searchQuery.trim()
-              ? `(${displayedTransactions.length} de ${filteredTransactions.length})`
-              : `(${filteredTransactions.length})`}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Movimientos{" "}
+              {searchQuery.trim()
+                ? `(${displayedTransactions.length} de ${filteredTransactions.length})`
+                : `(${filteredTransactions.length})`}
+            </p>
+            {activeCategoryFilter && (
+              <button
+                type="button"
+                onClick={onClearCategoryFilter}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors cursor-pointer"
+              >
+                {activeCategoryFilter}
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {filteredTransactions.length > 0 && (
               <p className="md:hidden text-[10px] text-muted-foreground/50">
@@ -375,7 +391,13 @@ export function TransactionList({
                         </div>
                         {/* Category chips — horizontal scroll */}
                         <div className="px-2 pb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
-                          {filteredCategoryChips.map((cat) => (
+                          {(categorySearch.trim()
+                            ? filteredCategoryChips
+                            : [
+                                ...(allCategories.includes(tx.category) ? [tx.category] : []),
+                                ...filteredCategoryChips.filter(c => c !== tx.category),
+                              ]
+                          ).map((cat) => (
                             <button
                               key={cat}
                               type="button"

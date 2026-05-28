@@ -143,6 +143,7 @@ export function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showCategoryChart, setShowCategoryChart] = useState(false)
   const [showAllTx, setShowAllTx] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
 
   // ── Onboarding ───────────────────────────────────────────────────────────────
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -253,8 +254,13 @@ export function DashboardPage() {
     custom: `${formatDateShort(customRange.from)} — ${formatDateShort(customRange.to)}`,
   }), [customRange.from, customRange.to])
 
+  const categoryFilteredTransactions = useMemo(() =>
+    categoryFilter ? filteredTransactions.filter(tx => tx.category === categoryFilter) : filteredTransactions,
+    [filteredTransactions, categoryFilter]
+  )
+
   const displayedTransactions = useMemo(() => {
-    let result = typeFilter ? filteredTransactions.filter(tx => tx.type === typeFilter) : filteredTransactions
+    let result = typeFilter ? categoryFilteredTransactions.filter(tx => tx.type === typeFilter) : categoryFilteredTransactions
     if (!searchQuery.trim()) return result
     const q = searchQuery.toLowerCase()
     return result.filter(tx =>
@@ -262,10 +268,10 @@ export function DashboardPage() {
       tx.category.toLowerCase().includes(q) ||
       (tx.observation?.toLowerCase().includes(q) ?? false),
     )
-  }, [filteredTransactions, searchQuery, typeFilter])
+  }, [categoryFilteredTransactions, searchQuery, typeFilter])
 
-  useEffect(() => { setShowAllTx(false) }, [filteredTransactions, searchQuery, typeFilter])
-  useEffect(() => { setTypeFilter(null) }, [timeFilter, customRange])
+  useEffect(() => { setShowAllTx(false) }, [filteredTransactions, searchQuery, typeFilter, categoryFilter])
+  useEffect(() => { setTypeFilter(null); setCategoryFilter(null) }, [timeFilter, customRange])
 
   const visibleTransactions = showAllTx ? displayedTransactions : displayedTransactions.slice(0, TX_PAGE)
   const hasMoreTx = displayedTransactions.length > TX_PAGE
@@ -958,11 +964,15 @@ export function DashboardPage() {
               showCategoryChart={showCategoryChart}
               setShowCategoryChart={setShowCategoryChart}
               formatCurrency={formatCurrency}
+              selectedCategory={categoryFilter}
+              onCategoryClick={(cat) => setCategoryFilter(c => c === cat ? null : cat)}
             />
 
             <TransactionList
-              filteredTransactions={filteredTransactions}
+              filteredTransactions={categoryFilteredTransactions}
               displayedTransactions={displayedTransactions}
+              activeCategoryFilter={categoryFilter}
+              onClearCategoryFilter={() => setCategoryFilter(null)}
               visibleTransactions={visibleTransactions}
               hasMoreTx={hasMoreTx}
               showAllTx={showAllTx}
