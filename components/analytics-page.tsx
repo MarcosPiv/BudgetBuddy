@@ -37,9 +37,12 @@ import {
   PieChart,
   Pie,
   Cell,
+  BarChart,
+  Bar,
 } from "recharts"
 import { useApp } from "@/lib/app-context"
 import type { Transaction } from "@/lib/app-context"
+import type { TimeFilter } from "@/lib/app-context"
 import { CalendarWithNav } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
@@ -108,6 +111,17 @@ function DailyProjectionTooltip({ active, payload, label }: { active?: boolean; 
   )
 }
 
+// ── Simple bar/area tooltip ────────────────────────────────────────────────────
+function SimpleValueTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
+      <p className="font-semibold text-foreground mb-0.5">{label}</p>
+      <p className="text-muted-foreground">{fmtArs(payload[0].value)}</p>
+    </div>
+  )
+}
+
 const PIE_COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#a855f7", "#10b981", "#f97316"]
 
 // ── Pie tooltip ────────────────────────────────────────────────────────────────
@@ -126,7 +140,7 @@ type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
-  const { setView, transactions, addTransaction, updateTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions } = useApp()
+  const { setView, transactions, addTransaction, updateTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions, timeFilter, setTimeFilter, customRange } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
 
@@ -435,10 +449,53 @@ export function AnalyticsPage() {
 
   const hasData = trendData.some(d => d.gastos > 0 || d.ingresos > 0)
 
+  // ── Filtered transactions by active time period ───────────────────────────
+  const filteredTransactions = useMemo(() => {
+    const n = new Date()
+    return transactions.filter(tx => {
+      const d = new Date(tx.date)
+      if (timeFilter === "week") {
+        const weekAgo = new Date(n)
+        weekAgo.setDate(weekAgo.getDate() - 7)
+        return d >= weekAgo
+      }
+      if (timeFilter === "month") {
+        return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
+      }
+      if (timeFilter === "year") {
+        return d.getFullYear() === n.getFullYear()
+      }
+      return d >= customRange.from && d <= customRange.to
+    })
+  }, [transactions, timeFilter, customRange])
+
+  // ── Period label ──────────────────────────────────────────────────────────
+  const periodLabel = useMemo(() => {
+    switch (timeFilter) {
+      case "week": return "Última semana"
+      case "month": return "Este mes"
+      case "year": return `Año ${now.getFullYear()}`
+      case "custom": {
+        const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })
+        return `${fmt(customRange.from)} – ${fmt(customRange.to)}`
+      }
+    }
+  }, [timeFilter, customRange])
+
+  // ── Expense chart title ───────────────────────────────────────────────────
+  const expenseChartTitle = useMemo(() => {
+    switch (timeFilter) {
+      case "week": return "Gastos de la semana"
+      case "month": return `Gastos del mes · ${MONTH_LABELS[now.getMonth()]}`
+      case "year": return `Gastos del año · ${now.getFullYear()}`
+      case "custom": return "Gastos del período"
+    }
+  }, [timeFilter])
+
   // ── Category breakdown ────────────────────────────────────────────────────
   const categoryData = useMemo(() => {
     const map = new Map<string, number>()
-    transactions
+    filteredTransactions
       .filter(tx => tx.type === "expense")
       .forEach(tx => {
         const cat = tx.category || "Sin categoría"
@@ -452,7 +509,80 @@ export function AnalyticsPage() {
     const othersVal = sorted.slice(6).reduce((a, c) => a + c.value, 0)
     return [...top, { name: "Otros", value: Math.round(othersVal) }]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, usdRate])
+  }, [filteredTransactions, usdRate])
+
+  // ── Adaptive chart data for non-month filters ────────────────────────────
+  const timeRangeChartData = useMemo(() => {
+    const n = new Date()
+    if (timeFilter === "week") {
+      const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(n)
+        d.setDate(d.getDate() - (6 - i))
+        const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+        const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
+        const total = transactions
+          .filter(tx => {
+            const td = new Date(tx.date)
+            return tx.type === "expense" && td >= dayStart && td <= dayEnd
+          })
+          .reduce((a, tx) => a + toArs(tx), 0)
+        return { label: `${DAY_NAMES[d.getDay()]} ${d.getDate()}`, value: Math.round(total) }
+      })
+    }
+    if (timeFilter === "year") {
+      return Array.from({ length: n.getMonth() + 1 }, (_, i) => {
+        const monthStart = new Date(n.getFullYear(), i, 1)
+        const monthEnd = new Date(n.getFullYear(), i + 1, 0, 23, 59, 59, 999)
+        const total = transactions
+          .filter(tx => {
+            const td = new Date(tx.date)
+            return tx.type === "expense" && td >= monthStart && td <= monthEnd
+          })
+          .reduce((a, tx) => a + toArs(tx), 0)
+        return { label: MONTH_LABELS[i], value: Math.round(total) }
+      })
+    }
+    if (timeFilter === "custom") {
+      const { from, to } = customRange
+      const diffDays = Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1
+      if (diffDays <= 62) {
+        return Array.from({ length: diffDays }, (_, i) => {
+          const d = new Date(from)
+          d.setDate(d.getDate() + i)
+          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+          const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
+          const total = transactions
+            .filter(tx => {
+              const td = new Date(tx.date)
+              return tx.type === "expense" && td >= dayStart && td <= dayEnd
+            })
+            .reduce((a, tx) => a + toArs(tx), 0)
+          const showLabel = i === 0 || (i + 1) % 7 === 0 || i === diffDays - 1
+          return { label: showLabel ? `${d.getDate()}/${d.getMonth() + 1}` : "", value: Math.round(total) }
+        })
+      } else {
+        const months: { label: string; value: number }[] = []
+        const cur = new Date(from.getFullYear(), from.getMonth(), 1)
+        const last = new Date(to.getFullYear(), to.getMonth(), 1)
+        while (cur <= last) {
+          const monthStart = new Date(cur)
+          const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0, 23, 59, 59, 999)
+          const total = transactions
+            .filter(tx => {
+              const td = new Date(tx.date)
+              return tx.type === "expense" && td >= monthStart && td <= monthEnd
+            })
+            .reduce((a, tx) => a + toArs(tx), 0)
+          months.push({ label: MONTH_LABELS[cur.getMonth()], value: Math.round(total) })
+          cur.setMonth(cur.getMonth() + 1)
+        }
+        return months
+      }
+    }
+    return null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, usdRate, timeFilter, customRange])
 
   // ── Projection toggle ─────────────────────────────────────────────────────
   const [showProjection, setShowProjection] = useState(() =>
@@ -615,6 +745,33 @@ export function AnalyticsPage() {
       {/* Content */}
       <main className="flex-1 px-4 py-4 sm:px-6 max-w-3xl mx-auto w-full pb-16 flex flex-col gap-4">
 
+          {/* ── Period filter chips ──────────────────────────────────── */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
+          {([
+            { id: "week" as TimeFilter, label: "Semana" },
+            { id: "month" as TimeFilter, label: "Mes" },
+            { id: "year" as TimeFilter, label: "Año" },
+          ]).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTimeFilter(id)}
+              className={`flex-none px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer border ${
+                timeFilter === id
+                  ? "bg-primary text-primary-foreground border-transparent"
+                  : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          {timeFilter === "custom" && (
+            <span className="flex-none px-3 py-1.5 rounded-full text-xs font-medium border border-primary bg-primary/10 text-primary">
+              {periodLabel}
+            </span>
+          )}
+        </div>
+
         {/* ── Monthly Trend Chart ──────────────────────────────────── */}
         <motion.div
           className="rounded-2xl border border-border bg-card p-4"
@@ -678,8 +835,81 @@ export function AnalyticsPage() {
           )}
         </motion.div>
 
-        {/* ── Daily Projection Chart ───────────────────────────────── */}
-        {dailyProjectionData && (
+        {/* ── Expense Chart (adaptive by period) ───────────────────── */}
+        {timeFilter === "month" ? (
+          dailyProjectionData && (
+            <motion.div
+              className="rounded-2xl border border-border bg-card p-4"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.01 }}
+            >
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                Gastos del mes · {MONTH_LABELS[now.getMonth()]}
+              </p>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={dailyProjectionData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="gradReal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartColors.expense} stopOpacity={0.18} />
+                      <stop offset="95%" stopColor={chartColors.expense} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tickFormatter={fmtArs}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={54}
+                  />
+                  <Tooltip content={<DailyProjectionTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="real"
+                    stroke={chartColors.expense}
+                    strokeWidth={2}
+                    fill="url(#gradReal)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: chartColors.expense }}
+                    connectNulls={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="projected"
+                    stroke={chartColors.expense}
+                    strokeWidth={2}
+                    strokeDasharray="5 4"
+                    strokeOpacity={0.5}
+                    fill="none"
+                    dot={false}
+                    activeDot={{ r: 4, fill: chartColors.expense }}
+                    connectNulls={false}
+                  />
+                  <ReferenceLine
+                    y={projectionData.projectedTotal}
+                    stroke={chartColors.expense}
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.35}
+                    label={{
+                      value: fmtArs(projectionData.projectedTotal),
+                      position: "insideTopRight",
+                      fontSize: 10,
+                      fill: "var(--muted-foreground)",
+                      dy: -4,
+                    }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </motion.div>
+          )
+        ) : (
           <motion.div
             className="rounded-2xl border border-border bg-card p-4"
             initial={{ opacity: 0, y: 14 }}
@@ -687,68 +917,40 @@ export function AnalyticsPage() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.01 }}
           >
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Gastos del mes · {MONTH_LABELS[now.getMonth()]}
+              {expenseChartTitle}
             </p>
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={dailyProjectionData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="gradReal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={chartColors.expense} stopOpacity={0.18} />
-                    <stop offset="95%" stopColor={chartColors.expense} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={fmtArs}
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={54}
-                />
-                <Tooltip content={<DailyProjectionTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="real"
-                  stroke={chartColors.expense}
-                  strokeWidth={2}
-                  fill="url(#gradReal)"
-                  dot={false}
-                  activeDot={{ r: 4, fill: chartColors.expense }}
-                  connectNulls={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="projected"
-                  stroke={chartColors.expense}
-                  strokeWidth={2}
-                  strokeDasharray="5 4"
-                  strokeOpacity={0.5}
-                  fill="none"
-                  dot={false}
-                  activeDot={{ r: 4, fill: chartColors.expense }}
-                  connectNulls={false}
-                />
-                <ReferenceLine
-                  y={projectionData.projectedTotal}
-                  stroke={chartColors.expense}
-                  strokeDasharray="3 3"
-                  strokeOpacity={0.35}
-                  label={{
-                    value: fmtArs(projectionData.projectedTotal),
-                    position: "insideTopRight",
-                    fontSize: 10,
-                    fill: "var(--muted-foreground)",
-                    dy: -4,
-                  }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {timeRangeChartData && timeRangeChartData.some(d => d.value > 0) ? (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={timeRangeChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tickFormatter={fmtArs}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={54}
+                  />
+                  <Tooltip content={<SimpleValueTooltip />} />
+                  <Bar
+                    dataKey="value"
+                    fill={chartColors.expense}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
+                    fillOpacity={0.85}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">
+                Sin gastos en este período.
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -907,9 +1109,12 @@ export function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
         >
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-            Gastos por categoría
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Gastos por categoría
+            </p>
+            <span className="text-xs text-muted-foreground/60">{periodLabel}</span>
+          </div>
 
           {categoryData.length > 0 ? (
             <div className="flex flex-col gap-4">
