@@ -1,7 +1,8 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { TrendingUp, TrendingDown, Repeat, DollarSign, Landmark } from "lucide-react"
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Landmark, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -62,6 +63,21 @@ export function EditDialog({
   onSave,
   getEditRate,
 }: EditDialogProps) {
+  const [catSearch, setCatSearch] = useState("")
+  const [catDropOpen, setCatDropOpen] = useState(false)
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    if (typeof window === "undefined") return []
+    try { return JSON.parse(localStorage.getItem("bb_custom_categories") ?? "[]") } catch { return [] }
+  })
+
+  const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
+  const filteredCats = useMemo(() => {
+    const s = catSearch.toLowerCase().trim()
+    return s ? allCategories.filter(c => c.toLowerCase().includes(s)) : allCategories
+  }, [allCategories, catSearch])
+  const isNewCat = catSearch.trim().length > 0 &&
+    !allCategories.some(c => c.toLowerCase() === catSearch.toLowerCase().trim())
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="sm:max-w-md p-0 gap-0 bg-card border-border flex flex-col max-h-[92dvh] overflow-hidden">
@@ -236,19 +252,68 @@ export function EditDialog({
           <div className="flex gap-2">
             <div className="flex flex-col gap-1.5 flex-1 min-w-0">
               <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
-              <Select
-                value={editForm.category}
-                onValueChange={(val) => setEditForm(f => ({ ...f, category: val, icon: CATEGORY_ICON_MAP[val] ?? "ShoppingCart" }))}
-              >
-                <SelectTrigger className="bg-secondary/50 border-border h-10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {VALID_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat} className="text-sm">{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <Input
+                  value={catDropOpen ? catSearch : editForm.category}
+                  onChange={(e) => setCatSearch(e.target.value)}
+                  onFocus={() => { setCatSearch(editForm.category); setCatDropOpen(true) }}
+                  onBlur={() => setTimeout(() => { setCatDropOpen(false); setCatSearch("") }, 150)}
+                  className="bg-secondary/50 border-border h-10 text-sm"
+                  placeholder="Buscar categoría..."
+                  autoComplete="off"
+                />
+                <AnimatePresence>
+                  {catDropOpen && (
+                    <motion.div
+                      className="absolute z-50 top-full mt-1 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <div className="max-h-48 overflow-y-auto py-1">
+                        {filteredCats.map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary ${editForm.category === cat ? "text-primary font-medium" : "text-foreground"}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setEditForm(f => ({ ...f, category: cat, icon: CATEGORY_ICON_MAP[cat] ?? "Tag" }))
+                              setCatSearch("")
+                              setCatDropOpen(false)
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                        {isNewCat && (
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-primary flex items-center gap-1.5 hover:bg-primary/10 transition-colors font-medium border-t border-border"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              const newCat = catSearch.trim()
+                              const updated = [...customCategories, newCat]
+                              setCustomCategories(updated)
+                              localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
+                              setEditForm(f => ({ ...f, category: newCat, icon: "Tag" }))
+                              setCatSearch("")
+                              setCatDropOpen(false)
+                            }}
+                          >
+                            <Plus className="w-3.5 h-3.5 shrink-0" />
+                            Crear &ldquo;{catSearch.trim()}&rdquo;
+                          </button>
+                        )}
+                        {filteredCats.length === 0 && !isNewCat && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground/60">Sin resultados</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0">
               <Label className="text-xs font-medium text-muted-foreground">Fecha</Label>

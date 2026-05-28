@@ -102,8 +102,8 @@ export function sanitizeUserInput(text: string): string {
 
 // ── Validation constants ──────────────────────────────────────────────────────
 
-const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft"]
-const VALID_CATEGORIES = ["Comida", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
+const VALID_ICONS = ["ShoppingCart", "Car", "Coffee", "Code", "Dumbbell", "ArrowDownLeft", "GraduationCap", "Heart", "Briefcase", "UtensilsCrossed", "Tag"]
+const VALID_CATEGORIES = ["Comida", "Supermercado", "Transporte", "Salidas", "Suscripciones", "Deporte", "Educacion", "Salud", "Trabajo", "General"]
 
 // ── System prompts ────────────────────────────────────────────────────────────
 
@@ -112,13 +112,13 @@ const SYSTEM_PROMPT = `Sos un asistente de finanzas personales para Argentina. T
 Respondé ÚNICAMENTE con JSON válido, sin texto extra, sin markdown, sin backticks.
 
 Si hay UNA sola transacción:
-{"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false}
+{"type":"expense","description":"descripción corta máx 35 chars","amount":número,"category":"Comida","icon":"UtensilsCrossed","daysAgo":0,"suggestRecurring":false}
 
 Si hay cuotas, agregá el campo observation (ver reglas abajo):
-{"type":"expense","description":"Celular","amount":20000,"category":"General","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false,"observation":"Cuota 1/6"}
+{"type":"expense","description":"Celular","amount":20000,"category":"General","icon":"Tag","daysAgo":0,"suggestRecurring":false,"observation":"Cuota 1/6"}
 
 Si el mensaje menciona MÚLTIPLES transacciones, devolvé un array JSON (una por item):
-[{"type":"expense","description":"Supermercado","amount":3000,"category":"Comida","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false},{"type":"expense","description":"Café","amount":800,"category":"Salidas","icon":"Coffee","daysAgo":0,"suggestRecurring":false}]
+[{"type":"expense","description":"Supermercado Dia","amount":3000,"category":"Supermercado","icon":"ShoppingCart","daysAgo":0,"suggestRecurring":false},{"type":"expense","description":"Café","amount":800,"category":"Salidas","icon":"Coffee","daysAgo":0,"suggestRecurring":false}]
 
 Para ingresos usar type:"income".
 
@@ -134,15 +134,18 @@ Reglas generales:
 - type "expense" = gasto, compra, pago, transferencia enviada, gasté
 - Cuando el usuario menciona un comercio (ej: "en MaxiLibrerias") usalo como contexto para elegir la categoría correcta. EXCEPCIÓN CRÍTICA: nombres de bancos, billeteras virtuales y medios de pago (Mercado Pago, Ualá, BBVA, Galicia, Santander, Efectivo, Naranja X, Brubank, etc.) NUNCA son categorías — siempre van al campo account. Si el texto dice "gasté en Mercado Pago", determinar la categoría por el tipo de gasto (o usar "General") y poner account: "Mercado Pago".
 - category y icon según el tema:
-  * Comida/supermercado/delivery → "Comida", "ShoppingCart"
-  * Transporte/nafta/peaje/uber/taxi/colectivo → "Transporte", "Car"
-  * Restaurante/bar/salida/café → "Salidas", "Coffee"
+  * Comida/delivery/restaurant/hamburgesa/pizza/almuerzo/cena → "Comida", "UtensilsCrossed"
+  * Supermercado/kiosco/almacén/despensa/compras de mercado → "Supermercado", "ShoppingCart"
+  * Transporte/nafta/peaje/uber/taxi/colectivo/subte → "Transporte", "Car"
+  * Restaurante/bar/salida/café/copas/boliche → "Salidas", "Coffee"
   * Netflix/Spotify/software/app/suscripción → "Suscripciones", "Code"
-  * Gym/deporte/medicina/salud → "Deporte", "Dumbbell"
-  * Trabajo/freelance/salario/cobro → "Trabajo", "ArrowDownLeft"
-  * Librería/papelería/útiles/ropa/shopping/electrodoméstico → "General", "ShoppingCart"
-  * Si no entra en ninguna → "General", "ShoppingCart"
-- Para ingresos preferir icon "ArrowDownLeft"
+  * Gym/deporte/cancha/fútbol/natación/running → "Deporte", "Dumbbell"
+  * Médico/farmacia/salud/dentista/psicólogo/clínica/medicamento → "Salud", "Heart"
+  * Colegio/universidad/curso/libro/educación/capacitación → "Educacion", "GraduationCap"
+  * Trabajo/freelance/salario/cobro/sueldo → "Trabajo", "Briefcase"
+  * Librería/papelería/útiles/ropa/shopping/electrodoméstico → "General", "Tag"
+  * Si no entra en ninguna → "General", "Tag"
+- Para ingresos preferir icon "Briefcase" si es trabajo/salario, si no "ArrowDownLeft"
 - Si dicen "hola", preguntas o texto sin transacción → {"type":"unknown"}
 
 Campo daysAgo (entero ≥ 0, SIEMPRE incluir en la respuesta):
@@ -248,7 +251,7 @@ function validateOne(raw: ParsedTransaction): ParsedTransaction {
   if (!["expense", "income"].includes(raw.type)) raw.type = "expense"
   if (typeof raw.amount !== "number" || !isFinite(raw.amount) || raw.amount < 1 || raw.amount > 1_000_000_000_000)
     throw new Error("Monto inválido en la respuesta.")
-  if (!VALID_ICONS.includes(raw.icon)) raw.icon = "ShoppingCart"
+  if (!VALID_ICONS.includes(raw.icon)) raw.icon = "Tag"
   if (!VALID_CATEGORIES.includes(raw.category)) raw.category = "General"
   if (!raw.description?.trim()) raw.description = "Transacción"
   raw.description = capitalize(raw.description.slice(0, 40))
@@ -806,7 +809,7 @@ Reglas de UPDATES — usar EXACTAMENTE estos nombres de campo en inglés:
 - "observation": nota u observación nueva (string). Usar cuando dice "nota", "observación", "descripción adicional", "comentario", "agregale/ponele/guardá".
 - "description": nuevo título/nombre de la transacción (string, máx 35 chars). Usar cuando dice "renombrá", "cambiá el título/nombre a X".
 - "amount": nuevo monto (número positivo). Usar cuando dice "cambiá el monto a N", "eran N".
-- "category": nueva categoría. Solo: "Comida","Transporte","Salidas","Suscripciones","Deporte","Educacion","Salud","Trabajo","General".
+- "category": nueva categoría. Solo: "Comida","Supermercado","Transporte","Salidas","Suscripciones","Deporte","Educacion","Salud","Trabajo","General".
 - "type": "income" o "expense". Usar cuando dice "era un ingreso/gasto".
 
 IMPORTANTE: Los nombres de campo SIEMPRE en inglés (observation, description, amount, category, type). NUNCA usar "nota", "titulo", "monto", "categoria" como claves.

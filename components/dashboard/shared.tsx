@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { ShoppingCart, Dumbbell, Code, Car, Coffee, ArrowDownLeft } from "lucide-react"
+import { ShoppingCart, Dumbbell, Code, Car, Coffee, ArrowDownLeft, GraduationCap, Heart, Briefcase, UtensilsCrossed, Tag } from "lucide-react"
 
 export const iconMap: Record<string, LucideIcon> = {
   ShoppingCart,
@@ -8,23 +8,29 @@ export const iconMap: Record<string, LucideIcon> = {
   Car,
   Coffee,
   ArrowDownLeft,
+  GraduationCap,
+  Heart,
+  Briefcase,
+  UtensilsCrossed,
+  Tag,
 }
 
 export const VALID_CATEGORIES = [
-  "Comida", "Transporte", "Salidas", "Suscripciones", "Deporte",
-  "Educacion", "Salud", "Trabajo", "General",
+  "Comida", "Supermercado", "Transporte", "Salidas", "Suscripciones",
+  "Deporte", "Educacion", "Salud", "Trabajo", "General",
 ]
 
 export const CATEGORY_ICON_MAP: Record<string, string> = {
-  Comida: "ShoppingCart",
+  Comida: "UtensilsCrossed",
+  Supermercado: "ShoppingCart",
   Transporte: "Car",
   Salidas: "Coffee",
   Suscripciones: "Code",
   Deporte: "Dumbbell",
-  Educacion: "Dumbbell",
-  Salud: "Dumbbell",
-  Trabajo: "ArrowDownLeft",
-  General: "ShoppingCart",
+  Educacion: "GraduationCap",
+  Salud: "Heart",
+  Trabajo: "Briefcase",
+  General: "Tag",
 }
 
 export const ONBOARDING_KEY = "bb_onboarding_v1"

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
-  Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp, Loader2,
+  Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp, Loader2, Plus,
 } from "lucide-react"
 // Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
@@ -89,6 +89,19 @@ export function TransactionList({
   onLoadMoreHistory,
 }: TransactionListProps) {
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
+  const [categorySearch, setCategorySearch] = useState("")
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    if (typeof window === "undefined") return []
+    try { return JSON.parse(localStorage.getItem("bb_custom_categories") ?? "[]") } catch { return [] }
+  })
+
+  const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
+  const filteredCategoryChips = useMemo(() => {
+    const s = categorySearch.toLowerCase().trim()
+    return s ? allCategories.filter(c => c.toLowerCase().includes(s)) : allCategories
+  }, [allCategories, categorySearch])
+  const isNewCategorySearch = categorySearch.trim().length > 0 &&
+    !allCategories.some(c => c.toLowerCase() === categorySearch.toLowerCase().trim())
 
   // Build flat list with date separators
   const items = useMemo<ListItem[]>(() => {
@@ -280,7 +293,9 @@ export function TransactionList({
                         onClick={(e) => {
                           e.stopPropagation()
                           if (dragActiveRef.current) return
-                          setCategoryPickerTxId(categoryPickerTxId === tx.id ? null : tx.id)
+                          const opening = categoryPickerTxId !== tx.id
+                          setCategoryPickerTxId(opening ? tx.id : null)
+                          if (!opening) setCategorySearch("")
                         }}
                         aria-label="Cambiar categoría"
                       >
@@ -342,29 +357,65 @@ export function TransactionList({
                   <AnimatePresence>
                     {categoryPickerTxId === tx.id && (
                       <motion.div
-                        className="mx-1 mt-1 mb-1 p-2 rounded-xl bg-secondary/60 border border-border flex flex-wrap gap-1.5"
+                        className="mx-1 mt-1 mb-1 rounded-xl bg-secondary/60 border border-border overflow-hidden"
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: 0.2 }}
                       >
-                        {VALID_CATEGORIES.map((cat) => (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => {
-                              onCategoryChange(tx, cat, CATEGORY_ICON_MAP[cat] ?? "ShoppingCart")
-                              setCategoryPickerTxId(null)
-                            }}
-                            className={`px-3 py-1 text-xs rounded-lg border transition-colors cursor-pointer ${
-                              tx.category === cat
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-background border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
-                            }`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
+                        {/* Search input */}
+                        <div className="p-2 pb-1.5">
+                          <input
+                            autoFocus
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            placeholder="Buscar o escribir categoría..."
+                            className="w-full px-3 py-1.5 text-xs rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/40"
+                            onPointerDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        {/* Category chips */}
+                        <div className="px-2 pb-2 flex flex-wrap gap-1.5">
+                          {filteredCategoryChips.map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => {
+                                onCategoryChange(tx, cat, CATEGORY_ICON_MAP[cat] ?? "Tag")
+                                setCategoryPickerTxId(null)
+                                setCategorySearch("")
+                              }}
+                              className={`px-3 py-1 text-xs rounded-lg border transition-colors cursor-pointer ${
+                                tx.category === cat
+                                  ? "bg-primary text-primary-foreground border-primary"
+                                  : "bg-background border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                          {filteredCategoryChips.length === 0 && !isNewCategorySearch && (
+                            <p className="text-xs text-muted-foreground/50 px-1 py-0.5">Sin resultados</p>
+                          )}
+                          {isNewCategorySearch && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newCat = categorySearch.trim()
+                                const updated = [...customCategories, newCat]
+                                setCustomCategories(updated)
+                                localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
+                                onCategoryChange(tx, newCat, "Tag")
+                                setCategoryPickerTxId(null)
+                                setCategorySearch("")
+                              }}
+                              className="px-3 py-1 text-xs rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Crear &ldquo;{categorySearch.trim()}&rdquo;
+                            </button>
+                          )}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
