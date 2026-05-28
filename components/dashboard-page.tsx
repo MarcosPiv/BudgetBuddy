@@ -52,7 +52,6 @@ export function DashboardPage() {
     signOut,
     userName,
     defaultAccount,
-    myAccounts,
     usdRate,
     apiKey,
     aiProvider,
@@ -413,7 +412,7 @@ export function DashboardPage() {
       )
 
       const aiResult = await Promise.race([
-        callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined, myAccounts),
+        callAI(aiProvider, apiKey, textInput, aiAttachments.length > 0 ? aiAttachments : undefined),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("La IA tardó demasiado. Revisá tu conexión e intentá de nuevo.")), 30_000)
         ),
@@ -489,11 +488,11 @@ export function DashboardPage() {
           }
         }
 
-        // Account: manual override > AI-detected > keyword match against user's accounts > default
+        // Account: manual override > AI-detected > keyword match > default
         const detectedAccount =
           selectedMagicAccount ||
           result.account ||
-          detectAccountFromText(textInput, myAccounts) ||
+          detectAccountFromText(textInput) ||
           defaultAccount
 
         addTransaction({
@@ -702,7 +701,6 @@ export function DashboardPage() {
     aiProvider,
     usdRate,
     defaultAccount,
-    myAccounts,
     liveRates,
     newExRateType,
     formatCurrency,
@@ -1042,7 +1040,6 @@ export function DashboardPage() {
           stopRecording={stopRecording}
           aiError={aiError}
           onManualEntry={() => openManualEntry()}
-          myAccounts={myAccounts}
           selectedAccount={selectedMagicAccount}
           onSelectAccount={setSelectedMagicAccount}
         />
@@ -1073,7 +1070,6 @@ export function DashboardPage() {
           usdRate={usdRate}
           onSave={handleSaveEdit}
           getEditRate={getEditRate}
-          myAccounts={myAccounts}
         />
 
         {/* Manual new transaction (no-AI / offline) */}
@@ -1089,7 +1085,6 @@ export function DashboardPage() {
           usdRate={usdRate}
           onSave={handleSaveNew}
           getEditRate={getEditRate}
-          myAccounts={myAccounts}
         />
 
         <CameraModal

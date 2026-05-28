@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { ExchangeRateType } from "@/lib/app-context"
-import { VALID_CATEGORIES, CATEGORY_ICON_MAP } from "./shared"
+import { VALID_CATEGORIES, CATEGORY_ICON_MAP, PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES } from "./shared"
 
 export interface EditForm {
   description: string
@@ -46,7 +46,6 @@ interface EditDialogProps {
   usdRate: number
   onSave: () => void
   getEditRate: () => number
-  myAccounts?: string[]
 }
 
 export function EditDialog({
@@ -62,7 +61,6 @@ export function EditDialog({
   usdRate,
   onSave,
   getEditRate,
-  myAccounts,
 }: EditDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -276,28 +274,29 @@ export function EditDialog({
           </div>
 
           {/* Account */}
-          {myAccounts && myAccounts.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <Landmark className="w-3 h-3" />
-                Cuenta (opcional)
-              </Label>
-              <Select
-                value={editForm.account ?? "__auto__"}
-                onValueChange={(val) => setEditForm(f => ({ ...f, account: val === "__auto__" ? undefined : val }))}
-              >
-                <SelectTrigger className="bg-secondary/50 border-border h-10 text-sm">
-                  <SelectValue placeholder="Detectar automáticamente" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="__auto__" className="text-sm text-muted-foreground/70">Detectar automáticamente</SelectItem>
-                  {myAccounts.map(acc => (
-                    <SelectItem key={acc} value={acc} className="text-sm">{acc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Landmark className="w-3 h-3" />
+              Cuenta (opcional)
+            </Label>
+            <Select
+              value={editForm.account ?? "__auto__"}
+              onValueChange={(val) => setEditForm(f => ({ ...f, account: val === "__auto__" ? undefined : val }))}
+            >
+              <SelectTrigger className="bg-secondary/50 border-border h-10 text-sm">
+                <SelectValue placeholder="Detectar automáticamente" />
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border max-h-64">
+                <SelectItem value="__auto__" className="text-sm text-muted-foreground/70">Detectar automáticamente</SelectItem>
+                {ACCOUNT_CATEGORIES.map(cat => {
+                  const items = PAYMENT_ACCOUNTS.filter(a => a.category === cat)
+                  return items.map(acc => (
+                    <SelectItem key={acc.id} value={acc.name} className="text-sm">{acc.name}</SelectItem>
+                  ))
+                })}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Recurring toggle */}
           <div className="flex items-center justify-between py-1">
