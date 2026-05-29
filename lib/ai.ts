@@ -200,16 +200,23 @@ Cuándo separar en MÚLTIPLES transacciones:
   * "gasté 3000 en el super de Palermo" → un solo gasto con contexto adicional
   * "almorcé y tomé café todo por 1200" → un solo gasto`
 
-function buildChatSystemPrompt(context: string): string {
-  // Sanitize context: strip HTML tags and lines that look like injected instructions.
-  // The context is generated from user transaction data (descriptions, categories) which
-  // could contain prompt injection attempts if a user crafted a malicious transaction note.
-  const safeContext = context
+function sanitizeContextForPrompt(context: string): string {
+  // Strip structural markers first
+  let safe = context
     .replace(/<[^>]*>/g, "")           // strip HTML/XML tags
     .replace(/###.*/g, "")            // strip markdown headings used as injection markers
     .replace(/\[INST\].*/gi, "")      // strip LLM instruction markers
     .replace(/system\s*:/gi, "")      // strip "system:" prefixes
     .trim()
+  // Redact any remaining injection patterns (context can't throw — replace with neutral marker)
+  for (const p of INJECTION_PATTERNS) {
+    safe = safe.replace(p, "[...]")
+  }
+  return safe
+}
+
+function buildChatSystemPrompt(context: string): string {
+  const safeContext = sanitizeContextForPrompt(context)
 
   return `Sos BudgetBuddy AI, asistente financiero personal para Argentina. Hablás en español rioplatense informal (vos, che).
 
@@ -382,7 +389,8 @@ export async function transcribeAudioAttachment(
       validateKeyFormat("openai", apiKey)
       if (!attachment.file) return null
       const text = await transcribeWithWhisper(apiKey, attachment.file)
-      return text || null
+      if (!text) return null
+      try { return sanitizeUserInput(text) } catch { return null }
     }
     // Gemini — direct call with minimal transcription system prompt, no financial context
     validateKeyFormat("gemini", apiKey)
@@ -403,7 +411,9 @@ export async function transcribeAudioAttachment(
     )
     if (!res.ok) return null
     const data = await res.json()
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null
+    const transcribed = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null
+    if (!transcribed) return null
+    try { return sanitizeUserInput(transcribed) } catch { return null }
   } catch {
     return null
   }

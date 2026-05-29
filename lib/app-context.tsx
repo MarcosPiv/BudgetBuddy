@@ -52,6 +52,13 @@ function persistQueue(q: OfflineOp[]) {
   if (typeof window !== "undefined") localStorage.setItem(QUEUE_KEY, JSON.stringify(q))
 }
 
+// ── Field sanitization (strips HTML, enforces length limits) ─────────────────
+function sanitizeField(value: string | undefined | null, maxLen: number): string | null {
+  if (value == null) return null
+  const clean = String(value).replace(/<[^>]*>/g, "").trim().slice(0, maxLen)
+  return clean || null
+}
+
 // ─── DB row → Transaction ─────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTransaction(row: any): Transaction {
@@ -476,13 +483,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const row: Record<string, unknown> = {
       user_id: user.id,
-      description: t.description,
+      description: sanitizeField(t.description, 35) ?? "Transacción",
       amount: t.amount,
       type: t.type,
       icon: t.icon,
       category: t.category,
       date: t.date instanceof Date ? t.date.toISOString() : t.date,
-      observation: t.observation ?? null,
+      observation: sanitizeField(t.observation, 100),
       currency: t.currency,
       amount_usd: t.amountUsd ?? null,
       tx_rate: t.txRate ?? null,
@@ -490,7 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       receipt_url: t.receiptUrl ?? null,
       is_recurring: t.isRecurring ?? false,
       recurring_frequency: t.recurringFrequency ?? "monthly",
-      account: t.account ?? null,
+      account: sanitizeField(t.account, 60),
     }
 
     // Offline: queue for sync when reconnected (keep optimistic update)
@@ -554,13 +561,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const merged = { ...backup, ...updates }
 
     const row: Record<string, unknown> = {
-      description: merged.description,
+      description: sanitizeField(merged.description, 35) ?? "Transacción",
       amount: merged.amount,
       type: merged.type,
       icon: merged.icon,
       category: merged.category,
       date: merged.date instanceof Date ? merged.date.toISOString() : merged.date,
-      observation: merged.observation ?? null,
+      observation: sanitizeField(merged.observation, 100),
       currency: merged.currency,
       amount_usd: merged.amountUsd ?? null,
       tx_rate: merged.txRate ?? null,
@@ -568,7 +575,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       receipt_url: merged.receiptUrl ?? null,
       is_recurring: merged.isRecurring ?? false,
       recurring_frequency: merged.recurringFrequency ?? "monthly",
-      account: merged.account ?? null,
+      account: sanitizeField(merged.account, 60),
     }
 
     if (!navigator.onLine) {
