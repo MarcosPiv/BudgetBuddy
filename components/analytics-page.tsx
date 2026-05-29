@@ -1408,8 +1408,6 @@ export function AnalyticsPage() {
         {futureTransactions.length > 0 && (() => {
           const totalFutureExp = Array.from(futureGroups.values()).reduce((a, g) => a + g.expenses, 0)
           const totalFutureInc = Array.from(futureGroups.values()).reduce((a, g) => a + g.income, 0)
-          const COLLAPSE_THRESHOLD = 5
-
           return (
             <motion.div
               className="rounded-2xl border border-border bg-card overflow-hidden"
@@ -1444,20 +1442,18 @@ export function AnalyticsPage() {
                 )}
               </div>
 
-              {/* Group list — accordion when > COLLAPSE_THRESHOLD items */}
+              {/* Group list — all collapsed by default */}
               <div className="flex flex-col divide-y divide-border">
                 {Array.from(futureGroups.entries()).map(([key, group]) => {
-                  const needsAccordion = group.txs.length > COLLAPSE_THRESHOLD
-                  const isExpanded = !needsAccordion || expandedFutureGroups.has(key)
+                  const isExpanded = expandedFutureGroups.has(key)
                   const groupIncome = group.income
                   const groupExpenses = group.expenses
                   return (
                     <div key={key}>
-                      {/* Month row — clickable when accordion */}
+                      {/* Month row — always a clickable accordion trigger */}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!needsAccordion) return
                           setExpandedFutureGroups(prev => {
                             const next = new Set(prev)
                             if (next.has(key)) next.delete(key)
@@ -1465,7 +1461,7 @@ export function AnalyticsPage() {
                             return next
                           })
                         }}
-                        className={`w-full flex items-center justify-between px-4 pt-3 pb-2 ${needsAccordion ? "cursor-pointer" : "cursor-default"}`}
+                        className="w-full flex items-center justify-between px-4 pt-3 pb-2 cursor-pointer hover:bg-secondary/20 transition-colors"
                       >
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider capitalize">
                           {group.label}
@@ -1473,11 +1469,9 @@ export function AnalyticsPage() {
                         <div className="flex items-center gap-2">
                           {groupIncome > 0 && <span className="text-[10px] font-semibold text-primary">+{fmtArs(groupIncome)}</span>}
                           {groupExpenses > 0 && <span className="text-[10px] font-semibold text-destructive">−{fmtArs(groupExpenses)}</span>}
-                          {needsAccordion && (
-                            <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
-                              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground rotate-[-90deg]" />
-                            </motion.div>
-                          )}
+                          <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                          </motion.div>
                         </div>
                       </button>
 
