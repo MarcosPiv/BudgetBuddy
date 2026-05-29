@@ -126,15 +126,21 @@ export function TransactionList({
 
   // ── Future transactions panel ─────────────────────────────────────────────
   const [showFuture, setShowFuture] = useState(false)
+  const [futureAutoMode, setFutureAutoMode] = useState(false)
   const futureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevFutureCountRef = useRef(futureTransactions.length)
 
   useEffect(() => {
     const curr = futureTransactions.length
     if (curr > prevFutureCountRef.current) {
+      // New future tx added → auto-open with timer
       setShowFuture(true)
+      setFutureAutoMode(true)
       if (futureTimerRef.current) clearTimeout(futureTimerRef.current)
-      futureTimerRef.current = setTimeout(() => setShowFuture(false), 5000)
+      futureTimerRef.current = setTimeout(() => {
+        setShowFuture(false)
+        setFutureAutoMode(false)
+      }, 5000)
     }
     prevFutureCountRef.current = curr
   }, [futureTransactions.length])
@@ -303,7 +309,11 @@ export function TransactionList({
                 type="button"
                 onClick={() => {
                   if (futureTimerRef.current) clearTimeout(futureTimerRef.current)
-                  setShowFuture(v => !v)
+                  futureTimerRef.current = null
+                  setShowFuture(v => {
+                    if (!v) setFutureAutoMode(false)  // opening manually → permanent mode
+                    return !v
+                  })
                 }}
                 className="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-secondary/30 transition-colors"
               >
@@ -360,13 +370,15 @@ export function TransactionList({
                         </p>
                       )}
                     </div>
-                    {/* Auto-collapse progress bar */}
-                    <motion.div
-                      className="h-0.5 bg-primary/40 origin-left"
-                      initial={{ scaleX: 1 }}
-                      animate={{ scaleX: 0 }}
-                      transition={{ duration: 5, ease: "linear" }}
-                    />
+                    {/* Auto-collapse progress bar — only in auto mode */}
+                    {futureAutoMode && (
+                      <motion.div
+                        className="h-0.5 bg-primary/40 origin-left"
+                        initial={{ scaleX: 1 }}
+                        animate={{ scaleX: 0 }}
+                        transition={{ duration: 5, ease: "linear" }}
+                      />
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
