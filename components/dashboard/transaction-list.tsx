@@ -338,7 +338,7 @@ export function TransactionList({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
                         <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span>{tx.category} · {formatDate(new Date(tx.date))}</span>
+                          <span>{tx.category} · {formatDate(new Date(tx.date), tx.type)}</span>
                           {isUsd && tx.exchangeRateType && (
                             <ExchangeTypeBadge type={tx.exchangeRateType} />
                           )}

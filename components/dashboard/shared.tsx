@@ -130,13 +130,19 @@ export interface Attachment {
   file: File
 }
 
-export function formatDate(d: Date): string {
-  const now = new Date()
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
+export function formatDate(d: Date, type?: "income" | "expense"): string {
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const dStart = new Date(d); dStart.setHours(0, 0, 0, 0)
+  const diff = Math.round((todayStart.getTime() - dStart.getTime()) / 86400000)
+  if (diff < 0) {
+    const dateStr = dStart.toLocaleDateString("es-AR", { day: "numeric", month: "long" })
+    if (type === "income") return `Se cobrará el ${dateStr}`
+    return `Se debitará el ${dateStr}`
+  }
   if (diff === 0) return "Hoy"
   if (diff === 1) return "Ayer"
   if (diff < 7) return `Hace ${diff} días`
-  return d.toLocaleDateString("es-AR", { day: "numeric", month: "long" })
+  return dStart.toLocaleDateString("es-AR", { day: "numeric", month: "long" })
 }
 
 export function formatDateShort(d: Date): string {
