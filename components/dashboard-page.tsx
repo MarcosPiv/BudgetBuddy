@@ -190,8 +190,10 @@ export function DashboardPage() {
 
   const filteredTransactions = useMemo(() => {
     const now = new Date()
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
     return transactions.filter((t) => {
       const txDate = new Date(t.date)
+      if (txDate > todayEnd) return false  // future-dated transactions never affect current balance
       if (timeFilter === "week") {
         const weekAgo = new Date(now)
         weekAgo.setDate(weekAgo.getDate() - 7)

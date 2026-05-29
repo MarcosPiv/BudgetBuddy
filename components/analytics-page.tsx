@@ -21,6 +21,8 @@ import {
   TrendingDown,
   ChevronDown,
   Minus,
+  Clock,
+  CalendarClock,
 } from "lucide-react"
 import {
   LineChart,
@@ -452,11 +454,13 @@ export function AnalyticsPage() {
 
   const hasData = trendData.some(d => d.gastos > 0 || d.ingresos > 0)
 
-  // ── Filtered transactions by active time period ───────────────────────────
+  // ── Filtered transactions by active time period (future-dated excluded) ──────
   const filteredTransactions = useMemo(() => {
     const n = new Date()
+    const todayEnd = new Date(n); todayEnd.setHours(23, 59, 59, 999)
     return transactions.filter(tx => {
       const d = new Date(tx.date)
+      if (d > todayEnd) return false  // future-dated never in active period
       if (timeFilter === "week") {
         const weekAgo = new Date(n)
         weekAgo.setDate(weekAgo.getDate() - 7)
@@ -471,6 +475,14 @@ export function AnalyticsPage() {
       return d >= customRange.from && d <= customRange.to
     })
   }, [transactions, timeFilter, customRange])
+
+  // ── Future-dated scheduled transactions ───────────────────────────────────
+  const futureTransactions = useMemo(() => {
+    const tomorrow = new Date(); tomorrow.setHours(0, 0, 0, 0); tomorrow.setDate(tomorrow.getDate() + 1)
+    return transactions
+      .filter(tx => new Date(tx.date) >= tomorrow)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [transactions])
 
   // ── Period label ──────────────────────────────────────────────────────────
   const periodLabel = useMemo(() => {
@@ -598,7 +610,7 @@ export function AnalyticsPage() {
     return next
   })
 
-  // ── Spending projection (history-weighted) ────────────────────────────────
+  // ── Spending projection (history-weighted + known future) ────────────────
   const projectionData = useMemo(() => {
     const n = new Date()
     const curMonth = n.getMonth()
@@ -607,10 +619,11 @@ export function AnalyticsPage() {
     const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate()
     const remainingDays = daysInMonth - daysElapsed
 
+    // Only past/today expenses for this month
     const currentMonthExp = transactions
       .filter(tx => {
         const d = new Date(tx.date)
-        return tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear
+        return tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear && d <= n
       })
       .reduce((a, tx) => a + toArs(tx), 0)
 
@@ -634,7 +647,7 @@ export function AnalyticsPage() {
         label: MONTH_LABELS[m],
         total: Math.round(total),
         dailyRate: daysInM > 0 ? total / daysInM : 0,
-        weight: 3 - idx, // weights: 3, 2, 1
+        weight: 3 - idx,
         hasData: total > 0,
       }
     })
@@ -646,10 +659,22 @@ export function AnalyticsPage() {
       weightedHistRate = monthsWithData.reduce((a, m) => a + m.dailyRate * m.weight, 0) / totalW
     }
 
-    // Blend: more history → more weight on historical
     const histWeight = monthsWithData.length >= 3 ? 0.4 : monthsWithData.length === 2 ? 0.3 : monthsWithData.length === 1 ? 0.2 : 0
     const blendedRate = currentDailyRate * (1 - histWeight) + weightedHistRate * histWeight
-    const projectedTotal = Math.round(currentMonthExp + blendedRate * remainingDays)
+
+    // Known future expenses already scheduled for this month
+    const futureDaysMap = new Map<number, number>()
+    transactions.forEach(tx => {
+      const d = new Date(tx.date)
+      if (tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear && d > n) {
+        const day = d.getDate()
+        futureDaysMap.set(day, (futureDaysMap.get(day) ?? 0) + toArs(tx))
+      }
+    })
+    const knownFutureExpenses = Array.from(futureDaysMap.values()).reduce((a, v) => a + v, 0)
+    // Only extrapolate for days without a known scheduled transaction
+    const extrapolationDays = Math.max(0, remainingDays - futureDaysMap.size)
+    const projectedTotal = Math.round(currentMonthExp + knownFutureExpenses + blendedRate * extrapolationDays)
 
     const histMonthlyAvg = monthsWithData.length > 0
       ? monthsWithData.reduce((a, m) => a + m.total, 0) / monthsWithData.length
@@ -670,6 +695,8 @@ export function AnalyticsPage() {
       monthsWithData: monthsWithData.length,
       trendPct,
       historical,
+      knownFutureExpenses: Math.round(knownFutureExpenses),
+      futureDaysMap,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, usdRate])
@@ -681,33 +708,46 @@ export function AnalyticsPage() {
     const curMonth = n.getMonth()
     const curYear = n.getFullYear()
     const today = n.getDate()
-    const { daysInMonth, currentExpenses, projectedTotal, daysElapsed, remainingDays } = projectionData
+    const { daysInMonth, currentExpenses, projectedTotal, daysElapsed, remainingDays, futureDaysMap } = projectionData
 
+    // Build daily map for real past expenses only (exclude future-dated)
     const dailyMap = new Map<number, number>()
     transactions.forEach(tx => {
       const d = new Date(tx.date)
-      if (tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear) {
+      if (tx.type === "expense" && d.getMonth() === curMonth && d.getFullYear() === curYear && d <= n) {
         const day = d.getDate()
         dailyMap.set(day, (dailyMap.get(day) ?? 0) + toArs(tx))
       }
     })
 
+    // Build step-wise projection: at each day, accumulate known futures + linear fill for unknown
     let cumulative = 0
+    let projCumulative = currentExpenses  // starts at today's actual
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1
       const isFuture = day > today
       if (!isFuture) cumulative += dailyMap.get(day) ?? 0
       const showLabel = day === 1 || day % 7 === 0 || day === today || day === daysInMonth
-      const projected =
-        day < today || remainingDays === 0 ? null
-        : Math.round(currentExpenses + (projectedTotal - currentExpenses) * (day - daysElapsed) / remainingDays)
+      let projected: number | null = null
+      if (day >= today && remainingDays > 0) {
+        // Step-wise: add known scheduled amount on that day, else linear interpolation
+        const knownForDay = futureDaysMap?.get(day) ?? 0
+        if (day > today) projCumulative += knownForDay
+        const linearContrib = remainingDays > 0
+          ? (projectedTotal - currentExpenses - (projectionData.knownFutureExpenses ?? 0)) / remainingDays
+          : 0
+        if (day > today && knownForDay === 0) projCumulative += linearContrib
+        projected = Math.round(day === today ? currentExpenses : projCumulative)
+      }
       const dateLabel = new Date(curYear, curMonth, day).toLocaleDateString("es-AR", { day: "numeric", month: "long" })
+      const hasScheduled = isFuture && (futureDaysMap?.has(day) ?? false)
       return {
         day,
         label: showLabel ? String(day) : "",
         dateLabel,
         real: isFuture ? null : Math.round(cumulative),
         projected,
+        hasScheduled,
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1325,6 +1365,105 @@ export function AnalyticsPage() {
             )}
           </AnimatePresence>
         </motion.div>
+
+        {/* ── Scheduled Future Transactions ────────────────────────── */}
+        {futureTransactions.length > 0 && (() => {
+          // Group by month+year
+          const groups = new Map<string, { label: string; txs: typeof futureTransactions; expenses: number; income: number }>()
+          futureTransactions.forEach(tx => {
+            const d = new Date(tx.date)
+            const key = `${d.getFullYear()}-${d.getMonth()}`
+            if (!groups.has(key)) {
+              groups.set(key, {
+                label: d.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+                txs: [],
+                expenses: 0,
+                income: 0,
+              })
+            }
+            const g = groups.get(key)!
+            g.txs.push(tx)
+            if (tx.type === "expense") g.expenses += toArs(tx)
+            else g.income += toArs(tx)
+          })
+          const totalFutureExp = Array.from(groups.values()).reduce((a, g) => a + g.expenses, 0)
+          const totalFutureInc = Array.from(groups.values()).reduce((a, g) => a + g.income, 0)
+
+          return (
+            <motion.div
+              className="rounded-2xl border border-border bg-card overflow-hidden"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-primary" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Programados a futuro
+                    <span className="ml-1.5 text-foreground">({futureTransactions.length})</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary totals */}
+              <div className="grid grid-cols-2 gap-px bg-border mx-0">
+                {totalFutureInc > 0 && (
+                  <div className="bg-card px-4 py-2.5 flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Ingresos</span>
+                    <span className="text-sm font-semibold text-primary tabular-nums">+{fmtArs(totalFutureInc)}</span>
+                  </div>
+                )}
+                {totalFutureExp > 0 && (
+                  <div className="bg-card px-4 py-2.5 flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Gastos</span>
+                    <span className="text-sm font-semibold text-destructive tabular-nums">−{fmtArs(totalFutureExp)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Group list */}
+              <div className="flex flex-col divide-y divide-border">
+                {Array.from(groups.entries()).map(([key, group]) => (
+                  <div key={key}>
+                    {/* Month label */}
+                    <div className="px-4 pt-3 pb-1.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider capitalize">
+                        {group.label}
+                      </span>
+                    </div>
+                    {/* Transactions in this month */}
+                    {group.txs.map(tx => {
+                      const Icon = iconMap[tx.icon] || ShoppingCart
+                      const d = new Date(tx.date)
+                      const isIncome = tx.type === "income"
+                      return (
+                        <div key={tx.id} className="flex items-center gap-3 px-4 py-2.5">
+                          <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
+                            <Icon className={`w-4 h-4 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Clock className="w-3 h-3 text-muted-foreground/40" />
+                            <span className={`text-sm font-semibold tabular-nums ${isIncome ? "text-primary" : "text-destructive"}`}>
+                              {isIncome ? "+" : "−"}${tx.amount.toLocaleString("es-AR")} {tx.currency}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )
+        })()}
 
         {/* ── Recurring Transactions ───────────────────────────────── */}
         <motion.div
