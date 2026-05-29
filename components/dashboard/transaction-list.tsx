@@ -1,10 +1,11 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
   Search, StickyNote, ShoppingCart, Wallet, Sparkles, FileUp, Loader2, Plus,
+  CalendarClock, Clock,
 } from "lucide-react"
 // Note: X still used by search clear button; Pencil/Trash2 used by desktop hover buttons
 import { SwipeCard } from "./swipe-card"
@@ -84,6 +85,7 @@ interface TransactionListProps {
   onLoadMoreHistory?: () => void
   activeCategoryFilter?: string | null
   onClearCategoryFilter?: () => void
+  futureTransactions?: Transaction[]
 }
 
 export function TransactionList({
@@ -111,6 +113,7 @@ export function TransactionList({
   onLoadMoreHistory,
   activeCategoryFilter,
   onClearCategoryFilter,
+  futureTransactions = [],
 }: TransactionListProps) {
   const showScrollTop = useScrollUp()
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
@@ -120,6 +123,23 @@ export function TransactionList({
     try { return JSON.parse(localStorage.getItem("bb_custom_categories") ?? "[]") } catch { return [] }
   })
   const [deletingCategory, setDeletingCategory] = useState<{ name: string; txId: string } | null>(null)
+
+  // ── Future transactions panel ─────────────────────────────────────────────
+  const [showFuture, setShowFuture] = useState(false)
+  const futureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevFutureCountRef = useRef(futureTransactions.length)
+
+  useEffect(() => {
+    const curr = futureTransactions.length
+    if (curr > prevFutureCountRef.current) {
+      setShowFuture(true)
+      if (futureTimerRef.current) clearTimeout(futureTimerRef.current)
+      futureTimerRef.current = setTimeout(() => setShowFuture(false), 5000)
+    }
+    prevFutureCountRef.current = curr
+  }, [futureTransactions.length])
+
+  useEffect(() => () => { if (futureTimerRef.current) clearTimeout(futureTimerRef.current) }, [])
 
   const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
   const filteredCategoryChips = useMemo(() => {
@@ -276,6 +296,83 @@ export function TransactionList({
 
       ) : (
         <div className="flex flex-col gap-2">
+          {/* ── Future transactions panel ─────────────────────────────── */}
+          {futureTransactions.length > 0 && (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  if (futureTimerRef.current) clearTimeout(futureTimerRef.current)
+                  setShowFuture(v => !v)
+                }}
+                className="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-secondary/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {futureTransactions.length === 1
+                      ? "1 movimiento programado a futuro"
+                      : `${futureTransactions.length} movimientos programados a futuro`}
+                  </span>
+                </div>
+                <motion.div animate={{ rotate: showFuture ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </motion.div>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {showFuture && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-col divide-y divide-border border-t border-border">
+                      {futureTransactions.slice(0, 3).map(tx => {
+                        const Icon = iconMap[CATEGORY_ICON_MAP[tx.category] ?? "Tag"] || ShoppingCart
+                        const isIncome = tx.type === "income"
+                        const d = new Date(tx.date)
+                        return (
+                          <div key={tx.id} className="flex items-center gap-3 px-3 py-2.5">
+                            <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
+                              <Icon className={`w-4 h-4 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Clock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                              <span className={`text-xs font-semibold tabular-nums ${isIncome ? "text-primary" : "text-destructive"}`}>
+                                {isIncome ? "+" : "−"}${tx.amount.toLocaleString("es-AR")} {tx.currency}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {futureTransactions.length > 3 && (
+                        <p className="text-center text-[10px] text-muted-foreground/60 py-2">
+                          +{futureTransactions.length - 3} más en Analítica
+                        </p>
+                      )}
+                    </div>
+                    {/* Auto-collapse progress bar */}
+                    <motion.div
+                      className="h-0.5 bg-primary/40 origin-left"
+                      initial={{ scaleX: 1 }}
+                      animate={{ scaleX: 0 }}
+                      transition={{ duration: 5, ease: "linear" }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           <AnimatePresence mode="popLayout">
             {items.map((item) => {
               if (item.kind === "separator") {

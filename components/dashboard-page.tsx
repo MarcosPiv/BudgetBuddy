@@ -262,6 +262,13 @@ export function DashboardPage() {
     [filteredTransactions, categoryFilter]
   )
 
+  const futureTransactions = useMemo(() => {
+    const tomorrow = new Date(); tomorrow.setHours(0, 0, 0, 0); tomorrow.setDate(tomorrow.getDate() + 1)
+    return transactions
+      .filter(tx => new Date(tx.date) >= tomorrow)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [transactions])
+
   const displayedTransactions = useMemo(() => {
     let result = typeFilter ? categoryFilteredTransactions.filter(tx => tx.type === typeFilter) : categoryFilteredTransactions
     if (!searchQuery.trim()) return result
@@ -1000,6 +1007,7 @@ export function DashboardPage() {
               isLoadingHistory={isLoadingHistory}
               hasMoreTransactions={hasMoreTransactions}
               onLoadMoreHistory={loadMoreTransactions}
+              futureTransactions={futureTransactions}
             />
           </main>
 
