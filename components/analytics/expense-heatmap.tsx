@@ -16,7 +16,11 @@ const DAY_HEADERS = ["L", "M", "X", "J", "V", "S", "D"]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtArs(n: number): string {
-  return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  if (n >= 1_000_000_000_000) return `${(n / 1_000_000_000_000).toFixed(1)}T`
+  if (n >= 1_000_000_000)     return `${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)         return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)             return `${(n / 1_000).toFixed(0)}K`
+  return Math.round(n).toLocaleString("es-AR")
 }
 
 function toArs(tx: Transaction, usdRate: number): number {
@@ -201,7 +205,7 @@ export function ExpenseHeatmap({ transactions, usdRate }: ExpenseHeatmapProps) {
 
                 {/* Expense amount */}
                 {data && data.total > 0 && (
-                  <span className="text-[8px] text-muted-foreground leading-none self-end">
+                  <span className="text-[8px] text-muted-foreground leading-none self-end w-full truncate text-center block">
                     ${fmtArs(data.total)}
                   </span>
                 )}

@@ -62,9 +62,22 @@ const iconMap: Record<string, React.ElementType> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtArs(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
-  return `$${Math.round(n).toLocaleString("es-AR")}`
+  const abs = Math.abs(n)
+  const sign = n < 0 ? "-" : ""
+  if (abs >= 1_000_000_000_000) return `${sign}$${(abs / 1_000_000_000_000).toFixed(1)}T`
+  if (abs >= 1_000_000_000)     return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000)         return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000)             return `${sign}$${(abs / 1_000).toFixed(0)}K`
+  return `${sign}$${Math.round(abs).toLocaleString("es-AR")}`
+}
+
+function fmtPct(n: number): string {
+  const abs = Math.abs(n)
+  const sign = n >= 0 ? "+" : ""
+  if (abs >= 1_000_000_000) return `${sign}${(n / 1_000_000_000).toFixed(1)}B%`
+  if (abs >= 1_000_000)     return `${sign}${(n / 1_000_000).toFixed(1)}M%`
+  if (abs >= 1_000)         return `${sign}${(n / 1_000).toFixed(0)}K%`
+  return `${sign}${Math.round(n)}%`
 }
 
 const MONTH_LABELS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
@@ -147,6 +160,7 @@ export function AnalyticsPage() {
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
   const [recurringFreqFilter, setRecurringFreqFilter] = useState<"all" | "weekly" | "biweekly" | "monthly" | "annual">("all")
+  const [expandedFutureGroups, setExpandedFutureGroups] = useState<Set<string>>(new Set())
 
   // ── Export state ────────────────────────────────────────────────────────────
   const now = new Date()
@@ -483,6 +497,26 @@ export function AnalyticsPage() {
       .filter(tx => new Date(tx.date) >= tomorrow)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }, [transactions])
+
+  // ── Future transactions grouped by month ──────────────────────────────────
+  const futureGroups = useMemo(() => {
+    const map = new Map<string, { label: string; txs: typeof futureTransactions; expenses: number; income: number }>()
+    futureTransactions.forEach(tx => {
+      const d = new Date(tx.date)
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      if (!map.has(key)) map.set(key, {
+        label: d.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+        txs: [],
+        expenses: 0,
+        income: 0,
+      })
+      const g = map.get(key)!
+      g.txs.push(tx)
+      if (tx.type === "expense") g.expenses += toArs(tx)
+      else g.income += toArs(tx)
+    })
+    return map
+  }, [futureTransactions, usdRate])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Period label ──────────────────────────────────────────────────────────
   const periodLabel = useMemo(() => {
@@ -1079,31 +1113,35 @@ export function AnalyticsPage() {
                   <div className="px-4 pb-5 pt-1 flex flex-col gap-4 border-t border-border">
 
                     {/* Hero: projected total + trend */}
-                    <div className="flex items-end justify-between pt-1">
-                      <div>
+                    <div className="flex items-end justify-between pt-1 gap-2 min-w-0">
+                      <div className="min-w-0">
                         <p className="text-[11px] text-muted-foreground mb-0.5">
                           Proyectado al {projectionData.daysInMonth}/{now.getMonth() + 1}
                         </p>
-                        <p className="text-3xl font-bold tabular-nums text-foreground">
+                        <p className="font-bold tabular-nums text-foreground truncate text-3xl">
                           {fmtArs(projectionData.projectedTotal)}
                         </p>
                       </div>
                       {projectionData.monthsWithData >= 1 && (
-                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold shrink-0 max-w-[52%] overflow-hidden ${
                           Math.abs(projectionData.trendPct) < 5
                             ? "bg-secondary text-muted-foreground"
                             : projectionData.trendPct > 0
                               ? "bg-destructive/10 text-destructive"
                               : "bg-primary/10 text-primary"
                         }`}>
-                          {Math.abs(projectionData.trendPct) < 5
-                            ? <Minus className="w-3 h-3" />
-                            : projectionData.trendPct > 0
-                              ? <TrendingUp className="w-3 h-3" />
-                              : <TrendingDown className="w-3 h-3" />}
-                          {Math.abs(projectionData.trendPct) < 5
-                            ? `Similar a últimos ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`
-                            : `${projectionData.trendPct > 0 ? "+" : ""}${projectionData.trendPct.toFixed(0)}% vs últimos ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`}
+                          <span className="shrink-0">
+                            {Math.abs(projectionData.trendPct) < 5
+                              ? <Minus className="w-3 h-3" />
+                              : projectionData.trendPct > 0
+                                ? <TrendingUp className="w-3 h-3" />
+                                : <TrendingDown className="w-3 h-3" />}
+                          </span>
+                          <span className="truncate">
+                            {Math.abs(projectionData.trendPct) < 5
+                              ? `Similar a últ. ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`
+                              : `${fmtPct(projectionData.trendPct)} vs últ. ${projectionData.monthsWithData} ${projectionData.monthsWithData === 1 ? "mes" : "meses"}`}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1368,26 +1406,9 @@ export function AnalyticsPage() {
 
         {/* ── Scheduled Future Transactions ────────────────────────── */}
         {futureTransactions.length > 0 && (() => {
-          // Group by month+year
-          const groups = new Map<string, { label: string; txs: typeof futureTransactions; expenses: number; income: number }>()
-          futureTransactions.forEach(tx => {
-            const d = new Date(tx.date)
-            const key = `${d.getFullYear()}-${d.getMonth()}`
-            if (!groups.has(key)) {
-              groups.set(key, {
-                label: d.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
-                txs: [],
-                expenses: 0,
-                income: 0,
-              })
-            }
-            const g = groups.get(key)!
-            g.txs.push(tx)
-            if (tx.type === "expense") g.expenses += toArs(tx)
-            else g.income += toArs(tx)
-          })
-          const totalFutureExp = Array.from(groups.values()).reduce((a, g) => a + g.expenses, 0)
-          const totalFutureInc = Array.from(groups.values()).reduce((a, g) => a + g.income, 0)
+          const totalFutureExp = Array.from(futureGroups.values()).reduce((a, g) => a + g.expenses, 0)
+          const totalFutureInc = Array.from(futureGroups.values()).reduce((a, g) => a + g.income, 0)
+          const COLLAPSE_THRESHOLD = 5
 
           return (
             <motion.div
@@ -1408,58 +1429,98 @@ export function AnalyticsPage() {
               </div>
 
               {/* Summary totals */}
-              <div className="grid grid-cols-2 gap-px bg-border mx-0">
+              <div className="grid grid-cols-2 gap-px bg-border">
                 {totalFutureInc > 0 && (
                   <div className="bg-card px-4 py-2.5 flex flex-col gap-0.5">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Ingresos</span>
-                    <span className="text-sm font-semibold text-primary tabular-nums">+{fmtArs(totalFutureInc)}</span>
+                    <span className="text-sm font-semibold text-primary tabular-nums truncate">+{fmtArs(totalFutureInc)}</span>
                   </div>
                 )}
                 {totalFutureExp > 0 && (
                   <div className="bg-card px-4 py-2.5 flex flex-col gap-0.5">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Gastos</span>
-                    <span className="text-sm font-semibold text-destructive tabular-nums">−{fmtArs(totalFutureExp)}</span>
+                    <span className="text-sm font-semibold text-destructive tabular-nums truncate">−{fmtArs(totalFutureExp)}</span>
                   </div>
                 )}
               </div>
 
-              {/* Group list */}
+              {/* Group list — accordion when > COLLAPSE_THRESHOLD items */}
               <div className="flex flex-col divide-y divide-border">
-                {Array.from(groups.entries()).map(([key, group]) => (
-                  <div key={key}>
-                    {/* Month label */}
-                    <div className="px-4 pt-3 pb-1.5">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider capitalize">
-                        {group.label}
-                      </span>
-                    </div>
-                    {/* Transactions in this month */}
-                    {group.txs.map(tx => {
-                      const Icon = iconMap[tx.icon] || ShoppingCart
-                      const d = new Date(tx.date)
-                      const isIncome = tx.type === "income"
-                      return (
-                        <div key={tx.id} className="flex items-center gap-3 px-4 py-2.5">
-                          <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
-                            <Icon className={`w-4 h-4 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Clock className="w-3 h-3 text-muted-foreground/40" />
-                            <span className={`text-sm font-semibold tabular-nums ${isIncome ? "text-primary" : "text-destructive"}`}>
-                              {isIncome ? "+" : "−"}${tx.amount.toLocaleString("es-AR")} {tx.currency}
-                            </span>
-                          </div>
+                {Array.from(futureGroups.entries()).map(([key, group]) => {
+                  const needsAccordion = group.txs.length > COLLAPSE_THRESHOLD
+                  const isExpanded = !needsAccordion || expandedFutureGroups.has(key)
+                  const groupIncome = group.income
+                  const groupExpenses = group.expenses
+                  return (
+                    <div key={key}>
+                      {/* Month row — clickable when accordion */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!needsAccordion) return
+                          setExpandedFutureGroups(prev => {
+                            const next = new Set(prev)
+                            if (next.has(key)) next.delete(key)
+                            else next.add(key)
+                            return next
+                          })
+                        }}
+                        className={`w-full flex items-center justify-between px-4 pt-3 pb-2 ${needsAccordion ? "cursor-pointer" : "cursor-default"}`}
+                      >
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider capitalize">
+                          {group.label}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {groupIncome > 0 && <span className="text-[10px] font-semibold text-primary">+{fmtArs(groupIncome)}</span>}
+                          {groupExpenses > 0 && <span className="text-[10px] font-semibold text-destructive">−{fmtArs(groupExpenses)}</span>}
+                          {needsAccordion && (
+                            <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground rotate-[-90deg]" />
+                            </motion.div>
+                          )}
                         </div>
-                      )
-                    })}
-                  </div>
-                ))}
+                      </button>
+
+                      {/* Transactions — animated accordion */}
+                      <AnimatePresence initial={false}>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            {group.txs.map(tx => {
+                              const Icon = iconMap[tx.icon] || ShoppingCart
+                              const d = new Date(tx.date)
+                              const isIncome = tx.type === "income"
+                              return (
+                                <div key={tx.id} className="flex items-center gap-3 px-4 py-2.5">
+                                  <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${isIncome ? "bg-primary/10" : "bg-secondary"}`}>
+                                    <Icon className={`w-4 h-4 ${isIncome ? "text-primary" : "text-muted-foreground"}`} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                      {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <Clock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                                    <span className={`text-sm font-semibold tabular-nums truncate max-w-[110px] ${isIncome ? "text-primary" : "text-destructive"}`}>
+                                      {isIncome ? "+" : "−"}{fmtArs(toArs(tx))} {tx.currency}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )
+                })}
               </div>
             </motion.div>
           )
