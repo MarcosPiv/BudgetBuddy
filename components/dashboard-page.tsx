@@ -122,6 +122,7 @@ export function DashboardPage() {
     manualRate: "",
     observation: "",
     isRecurring: false,
+    recurringFrequency: "monthly",
   })
   const dragActiveRef = useRef(false)
   const lastMagicSubmitRef = useRef(0)
@@ -345,6 +346,7 @@ export function DashboardPage() {
       manualRate: newManualRate,
       observation: "",
       isRecurring: false,
+      recurringFrequency: "monthly",
       account: defaultAccount,
     })
     setShowManualEntry(true)
@@ -366,6 +368,7 @@ export function DashboardPage() {
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
       isRecurring: editForm.isRecurring,
+      recurringFrequency: editForm.recurringFrequency,
       account: editForm.account || defaultAccount,
     }, (msg) => {
       setAiError(msg)
@@ -730,6 +733,7 @@ export function DashboardPage() {
       manualRate: tx.txRate ? String(tx.txRate) : "",
       observation: tx.observation ?? "",
       isRecurring: tx.isRecurring ?? false,
+      recurringFrequency: tx.recurringFrequency ?? "monthly",
       account: tx.account,
     })
   }
@@ -757,6 +761,7 @@ export function DashboardPage() {
       exchangeRateType: editForm.currency === "USD" ? editForm.exRateType : null,
       observation: editForm.observation.trim() || undefined,
       isRecurring: editForm.isRecurring,
+      recurringFrequency: editForm.recurringFrequency,
       account: editForm.account || undefined,
     }, (msg) => {
       setAiError(msg)

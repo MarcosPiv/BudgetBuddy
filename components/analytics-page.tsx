@@ -41,8 +41,7 @@ import {
   Bar,
 } from "recharts"
 import { useApp } from "@/lib/app-context"
-import type { Transaction } from "@/lib/app-context"
-import type { TimeFilter } from "@/lib/app-context"
+import type { Transaction, TimeFilter } from "@/lib/app-context"
 import { CalendarWithNav } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
@@ -145,6 +144,7 @@ export function AnalyticsPage() {
   const { setView, transactions, addTransaction, updateTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions, timeFilter, setTimeFilter, customRange } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
+  const [recurringFreqFilter, setRecurringFreqFilter] = useState<"all" | "weekly" | "biweekly" | "monthly" | "annual">("all")
 
   // ── Export state ────────────────────────────────────────────────────────────
   const now = new Date()
@@ -416,6 +416,7 @@ export function AnalyticsPage() {
         txRate: tpl.txRate,
         exchangeRateType: tpl.exchangeRateType,
         isRecurring: true,
+        recurringFrequency: tpl.recurringFrequency ?? "monthly",
       })
     })
     setApplyingMonth(false)
@@ -712,10 +713,29 @@ export function AnalyticsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, usdRate, projectionData])
 
+  // ── Recurring frequency helpers ───────────────────────────────────────────
+  const FREQ_LABELS: Record<string, string> = {
+    weekly: "Semanal", biweekly: "Cada 15 días", monthly: "Mensual", annual: "Anual",
+  }
+  // Monthly equivalent multiplier per frequency
+  const freqToMonthlyMultiplier = (freq?: string) => {
+    if (freq === "weekly") return 4.33
+    if (freq === "biweekly") return 2.17
+    if (freq === "annual") return 1 / 12
+    return 1 // monthly default
+  }
+
+  const filteredRecurringTemplates = useMemo(() =>
+    recurringFreqFilter === "all"
+      ? recurringTemplates
+      : recurringTemplates.filter(t => (t.recurringFrequency ?? "monthly") === recurringFreqFilter),
+    [recurringTemplates, recurringFreqFilter]
+  )
+
   // ── Summary stats ─────────────────────────────────────────────────────────
   const totalRecurringArs = recurringTemplates
     .filter(t => t.type === "expense")
-    .reduce((a, t) => a + toArs(t), 0)
+    .reduce((a, t) => a + toArs(t) * freqToMonthlyMultiplier(t.recurringFrequency), 0)
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -1318,7 +1338,7 @@ export function AnalyticsPage() {
             <div className="flex items-center gap-2">
               <Repeat className="w-4 h-4 text-primary" />
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Fijos mensuales
+                Gastos fijos
                 {recurringTemplates.length > 0 && (
                   <span className="ml-1.5 text-foreground">({recurringTemplates.length})</span>
                 )}
@@ -1336,6 +1356,30 @@ export function AnalyticsPage() {
               </button>
             )}
           </div>
+
+          {/* Frequency filter chips */}
+          {recurringTemplates.length > 0 && (
+            <div className="flex gap-1.5 px-4 py-2.5 border-b border-border overflow-x-auto scrollbar-none">
+              {(["all", "weekly", "biweekly", "monthly", "annual"] as const).map(f => {
+                const label = f === "all" ? "Todos" : FREQ_LABELS[f]
+                const isActive = recurringFreqFilter === f
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setRecurringFreqFilter(f)}
+                    className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                      isActive
+                        ? "bg-primary/15 border-primary/40 text-primary"
+                        : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* Feedback banner */}
           <AnimatePresence>
@@ -1358,7 +1402,7 @@ export function AnalyticsPage() {
           {/* Summary row when there are templates */}
           {recurringTemplates.length > 0 && totalRecurringArs > 0 && (
             <div className="px-4 py-2.5 bg-secondary/30 border-b border-border flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Total gastos fijos/mes</span>
+              <span className="text-xs text-muted-foreground">Equivalente mensual (todos los fijos)</span>
               <span className="text-xs font-semibold text-destructive tabular-nums">
                 −{fmtArs(totalRecurringArs)} ARS
               </span>
@@ -1371,14 +1415,19 @@ export function AnalyticsPage() {
               <Repeat className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">No hay transacciones fijas todavía.</p>
               <p className="text-xs text-muted-foreground/60 mt-1">
-                Editá un movimiento en el Dashboard y activá &quot;Fijo mensual&quot;.
+                Editá un movimiento en el Dashboard y activá &quot;Gasto fijo&quot;.
               </p>
+            </div>
+          ) : filteredRecurringTemplates.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">No hay fijos con esa frecuencia.</p>
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border">
-              {recurringTemplates.map(tpl => {
+              {filteredRecurringTemplates.map(tpl => {
                 const Icon = iconMap[tpl.icon] || ShoppingCart
                 const isIncome = tpl.type === "income"
+                const freq = tpl.recurringFrequency ?? "monthly"
                 return (
                   <div key={tpl.id} className="flex items-center gap-3 px-4 py-3.5">
                     <div
@@ -1390,9 +1439,14 @@ export function AnalyticsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{tpl.description}</p>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-secondary text-muted-foreground mt-0.5">
-                        {tpl.category}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-secondary text-muted-foreground">
+                          {tpl.category}
+                        </span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-primary">
+                          {FREQ_LABELS[freq]}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span

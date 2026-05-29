@@ -9,6 +9,7 @@ export type TimeFilter = "week" | "month" | "year" | "custom"
 export type ExchangeRateMode = "api" | "manual"
 export type ExchangeRateType = "BLUE" | "TARJETA" | "OFICIAL" | "MEP" | "MANUAL"
 export type AIProvider = "claude" | "openai" | "gemini"
+export type RecurringFrequency = "weekly" | "biweekly" | "monthly" | "annual"
 
 export interface Transaction {
   id: string
@@ -26,8 +27,10 @@ export interface Transaction {
   exchangeRateType?: ExchangeRateType | null
   /** Ruta en Supabase Storage del comprobante adjunto */
   receiptUrl?: string
-  /** Se repite automáticamente cada mes */
+  /** Se repite automáticamente */
   isRecurring?: boolean
+  /** Frecuencia de repetición del fijo */
+  recurringFrequency?: RecurringFrequency
   /** Banco o billetera utilizado (ej: "Banco Galicia", "Mercado Pago") */
   account?: string
 }
@@ -67,6 +70,7 @@ function mapTransaction(row: any): Transaction {
     exchangeRateType: row.exchange_rate_type ?? null,
     receiptUrl: row.receipt_url ?? undefined,
     isRecurring: row.is_recurring ?? false,
+    recurringFrequency: (row.recurring_frequency ?? "monthly") as RecurringFrequency,
     account: row.account ?? undefined,
   }
 }
@@ -485,6 +489,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       exchange_rate_type: t.exchangeRateType ?? null,
       receipt_url: t.receiptUrl ?? null,
       is_recurring: t.isRecurring ?? false,
+      recurring_frequency: t.recurringFrequency ?? "monthly",
       account: t.account ?? null,
     }
 
@@ -562,6 +567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       exchange_rate_type: merged.exchangeRateType ?? null,
       receipt_url: merged.receiptUrl ?? null,
       is_recurring: merged.isRecurring ?? false,
+      recurring_frequency: merged.recurringFrequency ?? "monthly",
       account: merged.account ?? null,
     }
 

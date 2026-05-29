@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { ExchangeRateType } from "@/lib/app-context"
+import type { ExchangeRateType, RecurringFrequency } from "@/lib/app-context"
 import { VALID_CATEGORIES, CATEGORY_ICON_MAP, PAYMENT_ACCOUNTS, ACCOUNT_CATEGORIES } from "./shared"
 
 export interface EditForm {
@@ -24,6 +24,7 @@ export interface EditForm {
   manualRate: string
   observation: string
   isRecurring: boolean
+  recurringFrequency: RecurringFrequency
   account?: string
 }
 
@@ -427,30 +428,59 @@ export function EditDialog({
             </Select>
           </div>
 
-          {/* Recurring toggle */}
-          <div className="flex items-center justify-between py-1">
-            <div className="flex flex-col gap-0.5">
-              <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
-                Fijo mensual
-              </Label>
-              <span className="text-[11px] text-muted-foreground">Se registra automáticamente cada mes</span>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={editForm.isRecurring}
-              onClick={() => setEditForm(f => ({ ...f, isRecurring: !f.isRecurring }))}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                editForm.isRecurring ? "bg-primary" : "bg-secondary"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
-                  editForm.isRecurring ? "translate-x-4" : "translate-x-0"
+          {/* Recurring toggle + frequency */}
+          <div className="flex flex-col gap-2 py-1">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <Label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
+                  Gasto fijo
+                </Label>
+                <span className="text-[11px] text-muted-foreground">Se repite de forma regular</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={editForm.isRecurring}
+                onClick={() => setEditForm(f => ({ ...f, isRecurring: !f.isRecurring }))}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                  editForm.isRecurring ? "bg-primary" : "bg-secondary"
                 }`}
-              />
-            </button>
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
+                    editForm.isRecurring ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+            {editForm.isRecurring && (
+              <div className="flex gap-1.5 flex-wrap">
+                {(["weekly", "biweekly", "monthly", "annual"] as RecurringFrequency[]).map(freq => {
+                  const labels: Record<RecurringFrequency, string> = {
+                    weekly: "Semanal",
+                    biweekly: "Cada 15 días",
+                    monthly: "Mensual",
+                    annual: "Anual",
+                  }
+                  const isSelected = editForm.recurringFrequency === freq
+                  return (
+                    <button
+                      key={freq}
+                      type="button"
+                      onClick={() => setEditForm(f => ({ ...f, recurringFrequency: freq }))}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground"
+                      }`}
+                    >
+                      {labels[freq]}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 

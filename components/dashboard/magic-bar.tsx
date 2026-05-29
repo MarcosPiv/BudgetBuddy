@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { es } from "date-fns/locale"
+import { toast } from "sonner"
 import type { ExchangeRateType } from "@/lib/app-context"
 import type { Attachment } from "./shared"
 
@@ -822,7 +823,18 @@ export function MagicBar({
                       mode="single"
                       selected={newTxDate ?? undefined}
                       onSelect={(date) => { setNewTxDate(date ?? null); setShowDatePicker(false) }}
-                      disabled={(date) => date > new Date()}
+                      disabled={(date) => {
+                        const today = new Date(); today.setHours(23, 59, 59, 999)
+                        return date > today
+                      }}
+                      onDayClick={(_day, modifiers) => {
+                        if (modifiers.disabled) {
+                          toast.info("No podés registrar fechas futuras", {
+                            description: "Para gastos recurrentes como suscripciones, registrá el movimiento y marcalo como Gasto fijo.",
+                            duration: 4000,
+                          })
+                        }
+                      }}
                       locale={es}
                       initialFocus
                     />
