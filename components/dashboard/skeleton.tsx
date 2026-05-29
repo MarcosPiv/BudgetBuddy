@@ -2,7 +2,7 @@ export function DashboardSkeleton() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
-      <div className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border bg-background/90 backdrop-blur-md h-[57px]">
+      <div className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border bg-background h-[57px]">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-secondary animate-pulse" />
           <div className="w-28 h-3.5 rounded-full bg-secondary animate-pulse" />
@@ -77,7 +77,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Magic bar placeholder */}
-      <div className="fixed bottom-0 left-0 right-0 h-20 border-t border-border bg-background/95 backdrop-blur-md flex items-center px-4 gap-3">
+      <div className="fixed bottom-0 left-0 right-0 h-20 border-t border-border bg-background flex items-center px-4 gap-3">
         <div className="flex-1 h-11 rounded-2xl bg-secondary animate-pulse" />
         <div className="w-11 h-11 rounded-2xl bg-secondary animate-pulse shrink-0" />
       </div>

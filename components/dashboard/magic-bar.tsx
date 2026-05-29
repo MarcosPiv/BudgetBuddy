@@ -242,7 +242,7 @@ export function MagicBar({
 
   return (
     <div
-      className={`fixed bottom-0 left-0 z-40 bg-background/95 backdrop-blur-md border-t border-border transition-[right] duration-300 ease-out ${chatOpen ? "right-0 lg:right-80 xl:right-96" : "right-0"
+      className={`fixed bottom-0 left-0 z-40 bg-background border-t border-border transition-[right] duration-300 ease-out ${chatOpen ? "right-0 lg:right-80 xl:right-96" : "right-0"
         }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >

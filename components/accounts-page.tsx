@@ -130,7 +130,7 @@ export function AccountsPage() {
   }
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 sm:px-6 border-b border-border bg-background/90 backdrop-blur-md">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 sm:px-6 border-b border-border bg-background">
         <button
           type="button"
           onClick={() => setView("dashboard")}

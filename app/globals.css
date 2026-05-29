@@ -199,11 +199,20 @@
 }
 
 .glass {
-  background: oklch(0.17 0.01 260 / 0.6);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: oklch(0.17 0.01 260 / 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .light .glass {
-  background: oklch(0.98 0.008 155 / 0.84);
+  background: oklch(0.98 0.008 155 / 0.95);
+}
+
+/* Disable expensive effects for users/browsers with reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

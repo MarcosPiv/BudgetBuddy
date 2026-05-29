@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, Pencil, Trash2, ChevronDown, ChevronUp, ChevronRight,
@@ -14,6 +14,22 @@ import { iconMap, formatDate, VALID_CATEGORIES, CATEGORY_ICON_MAP } from "./shar
 import type { Transaction, TimeFilter } from "@/lib/app-context"
 
 const TX_PAGE = 6
+
+// ── Scroll-up detector ────────────────────────────────────────────────────────
+function useScrollUp(threshold = 320) {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    let lastY = window.scrollY
+    const handler = () => {
+      const y = window.scrollY
+      setShow(y > threshold && y < lastY)
+      lastY = y
+    }
+    window.addEventListener("scroll", handler, { passive: true })
+    return () => window.removeEventListener("scroll", handler)
+  }, [threshold])
+  return show
+}
 
 // ── Date separator helpers ────────────────────────────────────────────────────
 function getDateLabel(date: Date): string {
@@ -92,6 +108,7 @@ export function TransactionList({
   activeCategoryFilter,
   onClearCategoryFilter,
 }: TransactionListProps) {
+  const showScrollTop = useScrollUp()
   const [categoryPickerTxId, setCategoryPickerTxId] = useState<string | null>(null)
   const [categorySearch, setCategorySearch] = useState("")
   const [customCategories, setCustomCategories] = useState<string[]>(() => {
@@ -397,7 +414,45 @@ export function TransactionList({
                                 ...(allCategories.includes(tx.category) ? [tx.category] : []),
                                 ...filteredCategoryChips.filter(c => c !== tx.category),
                               ]
-                          ).map((cat) => (
+                          ).map((cat) => {
+                            const isCustom = customCategories.includes(cat)
+                            return isCustom ? (
+                              <div key={cat} className={`flex-none flex items-center gap-0 rounded-lg border overflow-hidden ${tx.category === cat ? "border-primary" : "border-border"}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onCategoryChange(tx, cat, CATEGORY_ICON_MAP[cat] ?? "Tag")
+                                    setCategoryPickerTxId(null)
+                                    setCategorySearch("")
+                                  }}
+                                  className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                                    tx.category === cat
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-background text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                  }`}
+                                >
+                                  {cat}
+                                </button>
+                                <button
+                                  type="button"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const updated = customCategories.filter(c => c !== cat)
+                                    setCustomCategories(updated)
+                                    localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
+                                    if (tx.category === cat) onCategoryChange(tx, "General", "Tag")
+                                  }}
+                                  className={`px-1.5 py-1 text-xs transition-colors cursor-pointer ${
+                                    tx.category === cat
+                                      ? "bg-primary text-primary-foreground/70 hover:text-primary-foreground"
+                                      : "bg-background text-muted-foreground/40 hover:text-destructive hover:bg-secondary"
+                                  }`}
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            ) : (
                             <button
                               key={cat}
                               type="button"
@@ -414,7 +469,8 @@ export function TransactionList({
                             >
                               {cat}
                             </button>
-                          ))}
+                            )
+                          })}
                           {isNewCategorySearch && (
                             <button
                               type="button"
@@ -504,6 +560,25 @@ export function TransactionList({
           )}
         </div>
       )}
+
+      {/* Scroll-to-top — visible only while scrolling up */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="fixed right-4 z-30 w-10 h-10 rounded-full bg-card border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+            style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
+            aria-label="Volver al inicio"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

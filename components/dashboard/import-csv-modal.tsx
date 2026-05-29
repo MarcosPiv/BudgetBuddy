@@ -509,7 +509,7 @@ export function ImportCsvModal({ open, onClose }: ImportCsvModalProps) {
                 className="flex flex-col"
               >
                 {/* Header bar */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-border sticky top-0 bg-card/95 backdrop-blur-sm z-10">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-border sticky top-0 bg-card z-10">
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={toggleAll} className="text-[11px] text-primary hover:underline cursor-pointer">
                       {selected.size === parsedRows.length ? "Deseleccionar todo" : "Seleccionar todo"}
@@ -552,7 +552,7 @@ export function ImportCsvModal({ open, onClose }: ImportCsvModalProps) {
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 p-5 border-t border-border sticky bottom-0 bg-card/95 backdrop-blur-sm">
+                <div className="flex gap-2 p-5 border-t border-border sticky bottom-0 bg-card">
                   <button type="button" onClick={() => setStep("mapping")} className="flex-1 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer">
                     Atrás
                   </button>

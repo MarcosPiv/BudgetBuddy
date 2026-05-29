@@ -124,8 +124,8 @@ function WordReveal({ text, className, delay = 0 }: { text: string; className?: 
           key={i}
           className="inline-block"
           style={{ marginRight: "0.3em" }}
-          initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
-          animate={isInView ? { opacity: 1, y: 0, filter: "blur(0px)" } : {}}
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: delay + i * 0.07, duration: 0.55, ease: EASE }}
         >
           {word}
@@ -295,8 +295,8 @@ function HowItWorks() {
           <motion.div
             key={step.number}
             className="rounded-3xl border border-border bg-card p-6 flex flex-col gap-5"
-            initial={{ opacity: 0, y: 32, filter: "blur(8px)" }}
-            whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-60px" }}
             transition={{ delay: i * 0.12, duration: 0.6, ease: EASE }}
             whileHover={{ y: -4, boxShadow: "0 20px 40px oklch(0 0 0 / 0.3), 0 0 0 1px oklch(0.72 0.19 160 / 0.12)" }}
@@ -346,8 +346,8 @@ function BentoCard({ feature, className }: { feature: Feature; className?: strin
       ref={cardRef}
       className={`group rounded-3xl border border-border bg-card p-6 flex flex-col gap-4 cursor-default relative overflow-hidden ${className ?? ""}`}
       onMouseMove={onMouseMove}
-      initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
-      whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.55, ease: EASE }}
       whileHover={{ y: -4, boxShadow: "0 20px 40px oklch(0 0 0 / 0.3), 0 0 0 1px oklch(0.72 0.19 160 / 0.15)" }}
@@ -372,7 +372,7 @@ function AuroraMesh() {
   return (
     <div className="fixed inset-0 z-[-1] pointer-events-none bg-background overflow-hidden">
       {/* Emerald — top center */}
-      <motion.div
+      <div
         style={{
           position: "absolute",
           width: 900,
@@ -381,18 +381,10 @@ function AuroraMesh() {
           left: "5%",
           background: "radial-gradient(ellipse, oklch(0.72 0.19 160 / 0.15) 0%, transparent 70%)",
           filter: "blur(70px)",
-          willChange: "transform",
         }}
-        animate={{
-          x: [0, 120, -60, 90, -30, 0],
-          y: [0, 80, 140, -20, 60, 0],
-          scale: [1, 1.15, 0.88, 1.1, 0.95, 1],
-          rotate: [0, 8, -5, 12, -3, 0],
-        }}
-        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut", times: [0, 0.2, 0.45, 0.65, 0.85, 1] }}
       />
       {/* Violet — left */}
-      <motion.div
+      <div
         style={{
           position: "absolute",
           width: 700,
@@ -401,18 +393,10 @@ function AuroraMesh() {
           left: "-20%",
           background: "radial-gradient(ellipse, oklch(0.6 0.22 285 / 0.13) 0%, transparent 70%)",
           filter: "blur(80px)",
-          willChange: "transform",
         }}
-        animate={{
-          x: [0, 100, 160, 50, -20, 0],
-          y: [0, -90, 20, -50, 30, 0],
-          scale: [1, 0.85, 1.12, 0.92, 1.06, 1],
-          rotate: [0, -10, 6, -8, 4, 0],
-        }}
-        transition={{ duration: 17, repeat: Infinity, ease: "easeInOut", times: [0, 0.25, 0.5, 0.7, 0.88, 1] }}
       />
       {/* Indigo — right */}
-      <motion.div
+      <div
         style={{
           position: "absolute",
           width: 750,
@@ -421,18 +405,10 @@ function AuroraMesh() {
           right: "-15%",
           background: "radial-gradient(ellipse, oklch(0.55 0.2 265 / 0.12) 0%, transparent 70%)",
           filter: "blur(75px)",
-          willChange: "transform",
         }}
-        animate={{
-          x: [0, -110, -40, -80, -10, 0],
-          y: [0, 70, -80, 40, -30, 0],
-          scale: [1, 1.18, 0.9, 1.08, 0.96, 1],
-          rotate: [0, 12, -7, 9, -4, 0],
-        }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.22, 0.48, 0.68, 0.87, 1] }}
       />
       {/* Teal — bottom */}
-      <motion.div
+      <div
         style={{
           position: "absolute",
           width: 600,
@@ -441,15 +417,7 @@ function AuroraMesh() {
           left: "25%",
           background: "radial-gradient(ellipse, oklch(0.68 0.17 175 / 0.11) 0%, transparent 70%)",
           filter: "blur(90px)",
-          willChange: "transform",
         }}
-        animate={{
-          x: [0, -80, 100, -40, 60, 0],
-          y: [0, -80, 30, -60, 20, 0],
-          scale: [0.92, 1.14, 0.86, 1.1, 0.97, 0.92],
-          rotate: [0, -6, 10, -8, 5, 0],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut", times: [0, 0.2, 0.42, 0.65, 0.85, 1] }}
       />
     </div>
   )
@@ -506,7 +474,7 @@ export function LandingPage() {
       >
         {/* Frosted glass overlay — fades in as user scrolls */}
         <motion.div
-          className="absolute inset-0 bg-background/85 backdrop-blur-xl border-b border-border/50"
+          className="absolute inset-0 bg-background border-b border-border/50"
           style={{ opacity: navBgOpacity }}
         />
         <div className="relative z-10 flex items-center gap-2">
@@ -578,8 +546,8 @@ export function LandingPage() {
               <motion.span
                 key={word + i}
                 className="inline-block mr-[0.3em]"
-                initial={{ opacity: 0, y: 28, filter: "blur(10px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                initial={{ opacity: 0, y: 28 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 + i * 0.07, duration: 0.6, ease: EASE }}
               >
                 {word}
@@ -594,8 +562,8 @@ export function LandingPage() {
               <motion.span
                 key={word}
                 className="inline-block mr-[0.3em]"
-                initial={{ opacity: 0, y: 28, filter: "blur(10px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                initial={{ opacity: 0, y: 28 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.52 + i * 0.07, duration: 0.6, ease: EASE }}
               >
                 {word}
@@ -709,8 +677,8 @@ export function LandingPage() {
       <section className="px-5 py-14 md:py-24 lg:px-12 flex flex-col items-center text-center">
         <motion.h2
           className="text-3xl sm:text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-foreground leading-[1.05] max-w-4xl"
-          initial={{ opacity: 0, scale: 0.95, filter: "blur(12px)" }}
-          whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.8, ease: EASE }}
         >
@@ -743,8 +711,8 @@ export function LandingPage() {
         </motion.p>
         <motion.h2
           className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground leading-[1.05] max-w-3xl"
-          initial={{ opacity: 0, scale: 0.95, filter: "blur(12px)" }}
-          whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.8, ease: EASE }}
         >
@@ -786,8 +754,8 @@ export function LandingPage() {
         </motion.p>
         <motion.h2
           className="text-center text-2xl sm:text-3xl md:text-5xl font-bold text-foreground mb-8 md:mb-12 max-w-3xl mx-auto"
-          initial={{ opacity: 0, y: 16, filter: "blur(8px)" }}
-          whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.1, duration: 0.6, ease: EASE }}
         >
@@ -807,8 +775,8 @@ export function LandingPage() {
       <section className="px-5 pb-14 md:pb-28 lg:px-12">
         <motion.div
           className="max-w-2xl mx-auto rounded-3xl border border-primary/20 bg-card/50 p-8 sm:p-12 md:p-16 flex flex-col items-center text-center gap-5 sm:gap-6 relative overflow-hidden"
-          initial={{ opacity: 0, scale: 0.95, filter: "blur(12px)" }}
-          whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.8, ease: EASE }}
         >
