@@ -12,6 +12,10 @@ import { ReceiptImage } from "./receipt-image"
 import { ExchangeTypeBadge } from "./exchange-type-badge"
 import { iconMap, formatDate, VALID_CATEGORIES, CATEGORY_ICON_MAP } from "./shared"
 import type { Transaction, TimeFilter } from "@/lib/app-context"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const TX_PAGE = 6
 
@@ -115,6 +119,7 @@ export function TransactionList({
     if (typeof window === "undefined") return []
     try { return JSON.parse(localStorage.getItem("bb_custom_categories") ?? "[]") } catch { return [] }
   })
+  const [deletingCategory, setDeletingCategory] = useState<{ name: string; txId: string } | null>(null)
 
   const allCategories = useMemo(() => [...VALID_CATEGORIES, ...customCategories], [customCategories])
   const filteredCategoryChips = useMemo(() => {
@@ -416,8 +421,14 @@ export function TransactionList({
                               ]
                           ).map((cat) => {
                             const isCustom = customCategories.includes(cat)
+                            const isActive = tx.category === cat
                             return isCustom ? (
-                              <div key={cat} className={`flex-none flex items-center gap-0 rounded-lg border overflow-hidden ${tx.category === cat ? "border-primary" : "border-border"}`}>
+                              <div
+                                key={cat}
+                                className={`flex-none flex items-center rounded-lg border overflow-hidden transition-colors ${
+                                  isActive ? "border-primary bg-primary" : "border-border bg-background"
+                                }`}
+                              >
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -425,28 +436,26 @@ export function TransactionList({
                                     setCategoryPickerTxId(null)
                                     setCategorySearch("")
                                   }}
-                                  className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                                    tx.category === cat
-                                      ? "bg-primary text-primary-foreground"
-                                      : "bg-background text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                  className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
+                                    isActive
+                                      ? "text-primary-foreground"
+                                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                                   }`}
                                 >
                                   {cat}
                                 </button>
+                                <div className={`w-px h-3 shrink-0 ${isActive ? "bg-primary-foreground/20" : "bg-border"}`} />
                                 <button
                                   type="button"
                                   onPointerDown={(e) => e.stopPropagation()}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    const updated = customCategories.filter(c => c !== cat)
-                                    setCustomCategories(updated)
-                                    localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
-                                    if (tx.category === cat) onCategoryChange(tx, "General", "Tag")
+                                    setDeletingCategory({ name: cat, txId: tx.id })
                                   }}
-                                  className={`px-1.5 py-1 text-xs transition-colors cursor-pointer ${
-                                    tx.category === cat
-                                      ? "bg-primary text-primary-foreground/70 hover:text-primary-foreground"
-                                      : "bg-background text-muted-foreground/40 hover:text-destructive hover:bg-secondary"
+                                  className={`px-1.5 py-1 cursor-pointer transition-colors ${
+                                    isActive
+                                      ? "text-primary-foreground/70 hover:text-primary-foreground"
+                                      : "text-muted-foreground/40 hover:text-destructive"
                                   }`}
                                 >
                                   <X className="w-2.5 h-2.5" />
@@ -579,6 +588,40 @@ export function TransactionList({
           </motion.button>
         )}
       </AnimatePresence>
+
+      {/* Confirm delete custom category */}
+      <AlertDialog
+        open={!!deletingCategory}
+        onOpenChange={(open) => { if (!open) setDeletingCategory(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará la categoría &ldquo;{deletingCategory?.name}&rdquo;. Los movimientos que la tengan asignada pasarán a &ldquo;General&rdquo;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!deletingCategory) return
+                const updated = customCategories.filter(c => c !== deletingCategory.name)
+                setCustomCategories(updated)
+                localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
+                const affectedTx = visibleTransactions.find(t => t.id === deletingCategory.txId)
+                if (affectedTx?.category === deletingCategory.name) {
+                  onCategoryChange(affectedTx, "General", "Tag")
+                }
+                setDeletingCategory(null)
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   )
 }
