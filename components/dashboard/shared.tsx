@@ -159,7 +159,10 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 export function formatCurrency(n: number): string {
-  return `$ ${Math.abs(n).toLocaleString("es-AR")} ARS`
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000_000_000) return `$ ${(abs / 1_000_000_000_000).toFixed(1)}T ARS`
+  if (abs >= 1_000_000_000)     return `$ ${(abs / 1_000_000_000).toFixed(1)}B ARS`
+  return `$ ${abs.toLocaleString("es-AR")} ARS`
 }
 
 export function compressImage(file: File, maxPx = 1200, quality = 0.78): Promise<Blob> {

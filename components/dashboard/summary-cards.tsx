@@ -5,7 +5,10 @@ import { TrendingUp, TrendingDown } from "lucide-react"
 
 function fmtCompact(n: number): string {
   const sign = n < 0 ? "-" : ""
-  return `${sign}$${Math.round(Math.abs(n)).toLocaleString("es-AR")}`
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000_000_000) return `${sign}$${(abs / 1_000_000_000_000).toFixed(1)}T`
+  if (abs >= 1_000_000_000)     return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`
+  return `${sign}$${Math.round(abs).toLocaleString("es-AR")}`
 }
 
 interface SummaryCardsProps {
