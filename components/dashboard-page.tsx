@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useApp, type TimeFilter, type ExchangeRateType } from "@/lib/app-context"
+import { useApp, type TimeFilter, type ExchangeRateType, type RecurringFrequency } from "@/lib/app-context"
 import { supabase } from "@/lib/supabase"
 import { callAI, type AIAttachment } from "@/lib/ai"
 import { useExchangeRate } from "@/hooks/use-exchange-rate"
@@ -27,6 +27,10 @@ import { CameraModal } from "./dashboard/camera-modal"
 import { ImportCsvModal } from "./dashboard/import-csv-modal"
 import { AccountsModal } from "./dashboard/accounts-modal"
 import { toast } from "sonner"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // Shared utilities
 import {
@@ -40,6 +44,32 @@ import {
 } from "./dashboard/shared"
 
 const TX_PAGE = 6
+
+// ── Retroactive date generator ────────────────────────────────────────────────
+function addPeriod(date: Date, freq: RecurringFrequency): Date {
+  const d = new Date(date)
+  if (freq === "weekly")   { d.setDate(d.getDate() + 7); return d }
+  if (freq === "biweekly") { d.setDate(d.getDate() + 14); return d }
+  const origDay = date.getDate()
+  d.setDate(1)
+  if (freq === "monthly") d.setMonth(d.getMonth() + 1)
+  else                    d.setFullYear(d.getFullYear() + 1)
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(origDay, lastDay))
+  return d
+}
+
+function generateRetroactiveDates(startDate: Date, freq: RecurringFrequency): Date[] {
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+  const dates: Date[] = []
+  let cur = new Date(startDate)
+  while (dates.length < 200) {
+    cur = addPeriod(cur, freq)
+    if (cur > todayEnd) break
+    dates.push(new Date(cur))
+  }
+  return dates
+}
 
 export function DashboardPage() {
   const {
@@ -139,6 +169,10 @@ export function DashboardPage() {
 
   // ── Manual entry (no-AI / offline fallback) ──────────────────────────────────
   const [showManualEntry, setShowManualEntry] = useState(false)
+  const [retroConfirm, setRetroConfirm] = useState<{
+    template: Parameters<typeof addTransaction>[0]
+    dates: Date[]
+  } | null>(null)
 
   // ── Search / view state ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
@@ -364,13 +398,14 @@ export function DashboardPage() {
   const handleSaveNew = () => {
     const amount = parseFloat(editForm.amount)
     if (!amount || amount <= 0) return
-    addTransaction({
+    const startDate = editForm.date ? new Date(editForm.date + "T12:00:00") : new Date()
+    const template: Parameters<typeof addTransaction>[0] = {
       description: editForm.description.trim() || "Transacción",
       amount,
       type: editForm.type,
       icon: editForm.icon,
       category: editForm.category,
-      date: editForm.date ? new Date(editForm.date + "T12:00:00") : new Date(),
+      date: startDate,
       currency: editForm.currency,
       amountUsd: editForm.currency === "USD" ? amount : undefined,
       txRate: editForm.currency === "USD" ? getEditRate() : undefined,
@@ -379,11 +414,21 @@ export function DashboardPage() {
       isRecurring: editForm.isRecurring,
       recurringFrequency: editForm.recurringFrequency,
       account: editForm.account || defaultAccount,
-    }, (msg) => {
+    }
+    addTransaction(template, (msg) => {
       setAiError(msg)
       setTimeout(() => setAiError(null), 5000)
     })
     setShowManualEntry(false)
+
+    // Offer retroactive generation if recurring + past start date
+    if (editForm.isRecurring) {
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      if (startDate < today) {
+        const dates = generateRetroactiveDates(startDate, editForm.recurringFrequency)
+        if (dates.length > 0) setRetroConfirm({ template, dates })
+      }
+    }
   }
 
   const handleMagicSubmit = async (e?: React.FormEvent, directAttachments?: Attachment[]) => {
@@ -1198,6 +1243,57 @@ export function DashboardPage() {
           }} />
         )}
       </AnimatePresence>
+
+      {/* ── Retroactive recurring confirmation ───────────────── */}
+      <AlertDialog open={!!retroConfirm} onOpenChange={open => { if (!open) setRetroConfirm(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generar instancias pasadas</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Se encontraron <span className="font-semibold text-foreground">{retroConfirm?.dates.length}</span> instancias
+                  pasadas de <span className="font-semibold text-foreground">&ldquo;{retroConfirm?.template.description}&rdquo;</span>{" "}
+                  desde el{" "}
+                  <span className="font-semibold text-foreground">
+                    {retroConfirm?.dates[0]?.toLocaleDateString("es-AR", { day: "numeric", month: "long" })}
+                  </span>{" "}
+                  hasta hoy.
+                </p>
+                {retroConfirm && retroConfirm.dates.length <= 12 && (
+                  <ul className="text-xs text-muted-foreground space-y-0.5 max-h-40 overflow-y-auto">
+                    {retroConfirm.dates.map((d, i) => (
+                      <li key={i}>· {d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground">¿Deseás generarlas ahora?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRetroConfirm(null)}>Omitir</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!retroConfirm) return
+                const { template, dates } = retroConfirm
+                for (const d of dates) {
+                  addTransaction({ ...template, date: d }, (msg) => {
+                    setAiError(msg)
+                    setTimeout(() => setAiError(null), 5000)
+                  })
+                }
+                toast.success(`${dates.length} transacción${dates.length !== 1 ? "es" : ""} generada${dates.length !== 1 ? "s" : ""}`, {
+                  description: `Instancias pasadas de "${template.description}"`,
+                })
+                setRetroConfirm(null)
+              }}
+            >
+              Generar {retroConfirm?.dates.length}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
