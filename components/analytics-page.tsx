@@ -23,6 +23,7 @@ import {
   Minus,
   Clock,
   CalendarClock,
+  Trash2,
 } from "lucide-react"
 import {
   LineChart,
@@ -49,6 +50,10 @@ import type { DateRange } from "react-day-picker"
 import { es } from "date-fns/locale"
 import { ExpenseHeatmap } from "@/components/analytics/expense-heatmap"
 import { ShareSummary } from "@/components/analytics/share-summary"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // ── Icon map ─────────────────────────────────────────────────────────────────
 const iconMap: Record<string, React.ElementType> = {
@@ -156,11 +161,12 @@ type ExportMode = "thisMonth" | "lastMonth" | "thisYear" | "lastYear" | "custom"
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function AnalyticsPage() {
-  const { setView, transactions, addTransaction, updateTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions, timeFilter, setTimeFilter, customRange } = useApp()
+  const { setView, transactions, addTransaction, updateTransaction, deleteTransaction, usdRate, isLoadingHistory, hasMoreTransactions, loadMoreTransactions, timeFilter, setTimeFilter, customRange } = useApp()
   const [applyingMonth, setApplyingMonth] = useState(false)
   const [appliedCount, setAppliedCount] = useState<number | null>(null)
   const [recurringFreqFilter, setRecurringFreqFilter] = useState<"all" | "weekly" | "biweekly" | "monthly" | "annual">("all")
   const [expandedFutureGroups, setExpandedFutureGroups] = useState<Set<string>>(new Set())
+  const [deletingFutureTx, setDeletingFutureTx] = useState<Transaction | null>(null)
 
   // ── Export state ────────────────────────────────────────────────────────────
   const now = new Date()
@@ -1500,11 +1506,18 @@ export function AnalyticsPage() {
                                       {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
                                     </p>
                                   </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="flex items-center gap-2 shrink-0">
                                     <Clock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-                                    <span className={`text-sm font-semibold tabular-nums truncate max-w-[110px] ${isIncome ? "text-primary" : "text-destructive"}`}>
+                                    <span className={`text-sm font-semibold tabular-nums truncate max-w-[90px] ${isIncome ? "text-primary" : "text-destructive"}`}>
                                       {isIncome ? "+" : "−"}{fmtArs(toArs(tx))} {tx.currency}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingFutureTx(tx)}
+                                      className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
                                 </div>
                               )
@@ -1665,6 +1678,31 @@ export function AnalyticsPage() {
           )}
         </motion.div>
       </main>
+
+      {/* ── Delete future transaction confirmation ───────────── */}
+      <AlertDialog open={!!deletingFutureTx} onOpenChange={open => { if (!open) setDeletingFutureTx(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar movimiento programado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará &ldquo;{deletingFutureTx?.description}&rdquo;. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!deletingFutureTx) return
+                deleteTransaction(deletingFutureTx.id)
+                setDeletingFutureTx(null)
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

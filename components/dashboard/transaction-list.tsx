@@ -355,11 +355,25 @@ export function TransactionList({
                                 {d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })} · {tx.category}
                               </p>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
                               <Clock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
                               <span className={`text-xs font-semibold tabular-nums ${isIncome ? "text-primary" : "text-destructive"}`}>
                                 {isIncome ? "+" : "−"}${tx.amount.toLocaleString("es-AR")} {tx.currency}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => openEdit(tx)}
+                                className="p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDelete(tx)}
+                                className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         )
@@ -719,9 +733,16 @@ export function TransactionList({
                 const updated = customCategories.filter(c => c !== deletingCategory.name)
                 setCustomCategories(updated)
                 localStorage.setItem("bb_custom_categories", JSON.stringify(updated))
+                // Update the originating transaction (in visible list)
                 const affectedTx = visibleTransactions.find(t => t.id === deletingCategory.txId)
                 if (affectedTx?.category === deletingCategory.name) {
                   onCategoryChange(affectedTx, "General", "Tag")
+                }
+                // Also update any future transactions with the same deleted category
+                for (const tx of futureTransactions) {
+                  if (tx.category === deletingCategory.name) {
+                    onCategoryChange(tx, "General", "Tag")
+                  }
                 }
                 setDeletingCategory(null)
               }}
